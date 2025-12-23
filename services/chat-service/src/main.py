@@ -8,6 +8,7 @@ Supports real-time WebSocket connections for chat messaging.
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
 from src.routes import chats_router, health_router, websocket_router
@@ -19,6 +20,16 @@ app = FastAPI(
     title="Chat Service",
     description="Manages chat groups with DynamoDB and real-time WebSocket messaging",
     version=SERVICE_VERSION,
+)
+
+# CORS middleware - allows browser requests from any origin
+# In production, replace "*" with specific allowed origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (use specific domains in production)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 
 # REST API routes

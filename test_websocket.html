@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Multi-Client Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .clients-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .client {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .client h2 {
+            margin-top: 0;
+            color: #4CAF50;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        .status.connected {
+            background: #4CAF50;
+            color: white;
+        }
+        .status.disconnected {
+            background: #f44336;
+            color: white;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            flex: 1;
+        }
+        .btn-connect {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-disconnect {
+            background: #f44336;
+            color: white;
+        }
+        .btn-send {
+            background: #2196F3;
+            color: white;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            background: #fafafa;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .message {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.sent {
+            background: #e3f2fd;
+            border-left: 3px solid #2196F3;
+        }
+        .message.received {
+            background: #f1f8e9;
+            border-left: 3px solid #4CAF50;
+        }
+        .message.system {
+            background: #fff3e0;
+            border-left: 3px solid #ff9800;
+        }
+        .timestamp {
+            color: #888;
+            font-size: 10px;
+        }
+        .stats {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stats h2 {
+            margin-top: 0;
+        }
+        .stats pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .setup-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .setup-section h2 {
+            margin-top: 0;
+            color: #673AB7;
+            border-bottom: 2px solid #673AB7;
+            padding-bottom: 10px;
+        }
+        .btn-create {
+            background: #673AB7;
+            color: white;
+            width: 100%;
+        }
+        .btn-create:hover {
+            background: #5E35B1;
+        }
+        .chat-info {
+            background: #E8EAF6;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .chat-info strong {
+            color: #673AB7;
+        }
+        .success-message {
+            background: #C8E6C9;
+            color: #2E7D32;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .error-message {
+            background: #FFCDD2;
+            color: #C62828;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 WebSocket Multi-Client Test</h1>
+    
+    <!-- Chat Room Setup Section -->
+    <div class="setup-section">
+        <h2>🎯 Step 1: Create Chat Room</h2>
+        
+        <div class="input-group">
+            <label>Chat Room Name:</label>
+            <input type="text" id="chatRoomName" value="Test Room" placeholder="Enter chat room name">
+        </div>
+        
+        <div class="input-group">
+            <label>Created By:</label>
+            <input type="text" id="createdBy" value="alice" placeholder="Enter your user ID">
+        </div>
+        
+        <button class="btn-create" onclick="createChatRoom()">🚀 Create Chat Room & Add Participants</button>
+        
+        <div id="setupStatus"></div>
+        
+        <div id="chatInfo" class="chat-info" style="display: none;">
+            <strong>✅ Chat Room Ready!</strong><br>
+            <strong>Chat ID:</strong> <span id="displayChatId"></span><br>
+            <strong>Participants:</strong> alice, bob, charlie<br>
+            <br>
+            <em>Now you can connect the clients below!</em>
+        </div>
+    </div>
+    
+    <div class="clients-container">
+        <!-- Client 1: Alice -->
+        <div class="client">
+            <h2>👩 Alice</h2>
+            <div class="status disconnected" id="status-alice">Disconnected</div>
+            
+            <div class="input-group">
+                <label>User ID:</label>
+                <input type="text" id="userId-alice" value="alice">
+            </div>
+            
+            <div class="input-group">
+                <label>Chat Room:</label>
+                <input type="text" id="chatId-alice" value="" placeholder="Create a chat room first">
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-connect" onclick="connect('alice')">Connect</button>
+                <button class="btn-disconnect" onclick="disconnect('alice')">Disconnect</button>
+            </div>
+            
+            <div class="input-group">
+                <label>Message:</label>
+                <input type="text" id="message-alice" placeholder="Type your message here...">
+            </div>
+            
+            <button class="btn-send" onclick="sendMessage('alice')">Send Message</button>
+            
+            <div class="messages" id="messages-alice"></div>
+        </div>
+        
+        <!-- Client 2: Bob -->
+        <div class="client">
+            <h2>👨 Bob</h2>
+            <div class="status disconnected" id="status-bob">Disconnected</div>
+            
+            <div class="input-group">
+                <label>User ID:</label>
+                <input type="text" id="userId-bob" value="bob">
+            </div>
+            
+            <div class="input-group">
+                <label>Chat Room:</label>
+                <input type="text" id="chatId-bob" value="" placeholder="Create a chat room first">
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-connect" onclick="connect('bob')">Connect</button>
+                <button class="btn-disconnect" onclick="disconnect('bob')">Disconnect</button>
+            </div>
+            
+            <div class="input-group">
+                <label>Message:</label>
+                <input type="text" id="message-bob" placeholder="Type your message here...">
+            </div>
+            
+            <button class="btn-send" onclick="sendMessage('bob')">Send Message</button>
+            
+            <div class="messages" id="messages-bob"></div>
+        </div>
+        
+        <!-- Client 3: Charlie -->
+        <div class="client">
+            <h2>🧑 Charlie</h2>
+            <div class="status disconnected" id="status-charlie">Disconnected</div>
+            
+            <div class="input-group">
+                <label>User ID:</label>
+                <input type="text" id="userId-charlie" value="charlie">
+            </div>
+            
+            <div class="input-group">
+                <label>Chat Room:</label>
+                <input type="text" id="chatId-charlie" value="" placeholder="Create a chat room first">
+            </div>
+            
+            <div class="button-group">
+                <button class="btn-connect" onclick="connect('charlie')">Connect</button>
+                <button class="btn-disconnect" onclick="disconnect('charlie')">Disconnect</button>
+            </div>
+            
+            <div class="input-group">
+                <label>Message:</label>
+                <input type="text" id="message-charlie" placeholder="Type your message here...">
+            </div>
+            
+            <button class="btn-send" onclick="sendMessage('charlie')">Send Message</button>
+            
+            <div class="messages" id="messages-charlie"></div>
+        </div>
+    </div>
+    
+    <div class="stats">
+        <h2>📊 WebSocket Statistics</h2>
+        <button onclick="fetchStats()" style="margin-bottom: 10px;">Refresh Stats</button>
+        <pre id="stats-display">Click "Refresh Stats" to load...</pre>
+    </div>
+
+    <script>
+        // Store WebSocket connections
+        const connections = {};
+
+        // Create chat room and add participants
+        async function createChatRoom() {
+            const roomName = document.getElementById('chatRoomName').value;
+            const createdBy = document.getElementById('createdBy').value;
+            const statusDiv = document.getElementById('setupStatus');
+            const chatInfoDiv = document.getElementById('chatInfo');
+            
+            if (!roomName || !createdBy) {
+                statusDiv.innerHTML = '<div class="error-message">Please enter both room name and creator ID</div>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<div>Creating chat room...</div>';
+            
+            try {
+                // Step 1: Create chat room
+                const createResponse = await fetch('http://localhost/api/chats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: roomName,
+                        created_by: createdBy
+                    })
+                });
+                
+                if (!createResponse.ok) {
+                    throw new Error(`Failed to create chat room: ${createResponse.status}`);
+                }
+                
+                const chatData = await createResponse.json();
+                const chatId = chatData.id;
+                
+                statusDiv.innerHTML = '<div>Chat room created! Adding participants...</div>';
+                
+                // Step 2: Add participants
+                const participantsResponse = await fetch(`http://localhost/api/chats/${chatId}/participants`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        participant_ids: ['alice', 'bob', 'charlie']
+                    })
+                });
+                
+                if (!participantsResponse.ok) {
+                    throw new Error(`Failed to add participants: ${participantsResponse.status}`);
+                }
+                
+                // Step 3: Update all chat ID inputs
+                document.getElementById('chatId-alice').value = chatId;
+                document.getElementById('chatId-bob').value = chatId;
+                document.getElementById('chatId-charlie').value = chatId;
+                document.getElementById('displayChatId').textContent = chatId;
+                
+                // Show success
+                statusDiv.innerHTML = '<div class="success-message">✅ Chat room created successfully!</div>';
+                chatInfoDiv.style.display = 'block';
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                console.error('Error creating chat room:', error);
+            }
+        }
+
+        function connect(clientId) {
+            const userId = document.getElementById(`userId-${clientId}`).value;
+            const chatId = document.getElementById(`chatId-${clientId}`).value;
+            
+            if (!userId || !chatId) {
+                addMessage(clientId, 'Please enter User ID and Chat Room', 'system');
+                return;
+            }
+            
+            // Close existing connection if any
+            if (connections[clientId]) {
+                connections[clientId].close();
+            }
+            
+            // Create WebSocket connection (FIXED: removed extra /chat/)
+            const ws = new WebSocket(`ws://localhost/api/chats/ws/${chatId}?user_id=${userId}`);
+            
+            ws.onopen = () => {
+                updateStatus(clientId, true);
+                addMessage(clientId, `Connected to room: ${chatId}`, 'system');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'system') {
+                        addMessage(clientId, data.content, 'system');
+                    } else if (data.type === 'message') {
+                        const from = data.sender_id === userId ? 'You' : data.sender_id;
+                        addMessage(clientId, `${from}: ${data.content}`, 'received');
+                    } else {
+                        addMessage(clientId, event.data, 'received');
+                    }
+                } catch (e) {
+                    // If not JSON, display as-is
+                    addMessage(clientId, event.data, 'received');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addMessage(clientId, `Error: Connection failed. Check console for details.`, 'system');
+            };
+            
+            ws.onclose = (event) => {
+                updateStatus(clientId, false);
+                const reason = event.reason || 'No reason provided';
+                const code = event.code;
+                console.log(`WebSocket closed. Code: ${code}, Reason: ${reason}`);
+                addMessage(clientId, `Disconnected (code: ${code})`, 'system');
+                if (reason && reason !== 'No reason provided') {
+                    addMessage(clientId, `Reason: ${reason}`, 'system');
+                }
+            };
+            
+            connections[clientId] = ws;
+        }
+
+        function disconnect(clientId) {
+            if (connections[clientId]) {
+                connections[clientId].close();
+                delete connections[clientId];
+            }
+        }
+
+        function sendMessage(clientId) {
+            const ws = connections[clientId];
+            const messageInput = document.getElementById(`message-${clientId}`);
+            const message = messageInput.value;
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage(clientId, 'Not connected!', 'system');
+                return;
+            }
+            
+            if (!message) {
+                return;
+            }
+            
+            // Send message in JSON format as expected by the server
+            const messageData = JSON.stringify({
+                type: "message",
+                content: message
+            });
+            
+            ws.send(messageData);
+            addMessage(clientId, `You: ${message}`, 'sent');
+            messageInput.value = '';
+        }
+
+        function addMessage(clientId, text, type) {
+            const messagesDiv = document.getElementById(`messages-${clientId}`);
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${text}`;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function updateStatus(clientId, connected) {
+            const statusDiv = document.getElementById(`status-${clientId}`);
+            statusDiv.className = `status ${connected ? 'connected' : 'disconnected'}`;
+            statusDiv.textContent = connected ? 'Connected' : 'Disconnected';
+        }
+
+        async function fetchStats() {
+            try {
+                const response = await fetch('http://localhost/api/chats/ws/stats');
+                const stats = await response.json();
+                document.getElementById('stats-display').textContent = JSON.stringify(stats, null, 2);
+            } catch (error) {
+                document.getElementById('stats-display').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Allow sending with Enter key
+        ['alice', 'bob', 'charlie'].forEach(clientId => {
+            document.getElementById(`message-${clientId}`).addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage(clientId);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

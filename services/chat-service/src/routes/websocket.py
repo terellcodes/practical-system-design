@@ -46,16 +46,18 @@ async def websocket_chat(
         {"type": "system", "content": "user-123 joined the chat"}
     """
     
-    # Verify chat exists
+    # Accept connection first (required before any WebSocket operations)
+    await manager.connect(websocket, chat_id)
+    
+    # Then verify chat exists
     repo = DynamoDBRepository()
     chat = repo.get_chat(chat_id)
     
     if not chat:
+        # Now we can properly close the accepted connection
         await websocket.close(code=4004, reason=f"Chat {chat_id} not found")
+        manager.disconnect(websocket, chat_id)
         return
-    
-    # Accept connection
-    await manager.connect(websocket, chat_id)
     
     try:
         # Announce user joined

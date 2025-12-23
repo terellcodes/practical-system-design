@@ -8,6 +8,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
 from src.database import init_postgres, init_redis, close_postgres, close_redis
@@ -44,6 +45,16 @@ app = FastAPI(
     description="Manages users with PostgreSQL and Redis caching",
     version=SERVICE_VERSION,
     lifespan=lifespan,
+)
+
+# CORS middleware - allows browser requests from any origin
+# In production, replace "*" with specific allowed origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (use specific domains in production)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
+    allow_headers=["*"],  # Allows all headers
 )
 
 app.include_router(health_router)
