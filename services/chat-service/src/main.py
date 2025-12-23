@@ -2,6 +2,7 @@
 Chat Service - FastAPI Application Entry Point
 
 Manages chat groups with DynamoDB (via LocalStack locally).
+Supports real-time WebSocket connections for chat messaging.
 """
 
 import logging
@@ -9,25 +10,30 @@ import logging
 from fastapi import FastAPI
 
 from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
-from src.routes import chats_router, health_router
+from src.routes import chats_router, health_router, websocket_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Chat Service",
-    description="Manages chat groups with DynamoDB",
+    description="Manages chat groups with DynamoDB and real-time WebSocket messaging",
     version=SERVICE_VERSION,
 )
 
+# REST API routes
 app.include_router(health_router)
 app.include_router(chats_router)
+
+# WebSocket routes (mounted under /chats for NGINX routing)
+app.include_router(websocket_router, prefix="/chats")
 
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
+    logger.info("WebSocket endpoint: /chats/ws/{{chat_id}}?user_id={{user_id}}")
     logger.info("=" * 60)
 
 
