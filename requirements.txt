@@ -5,4 +5,5 @@ dapr-ext-grpc==1.14.0
 pydantic>=2.6.0
 python-dateutil==2.8.2
 httpx==0.25.2
+boto3>=1.34.0
 
