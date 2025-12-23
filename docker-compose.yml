@@ -66,8 +66,10 @@ services:
     build:
       context: .
       dockerfile: services/chat-service/Dockerfile
-    container_name: chat-service
+    # No container_name - allows scaling multiple instances
     restart: unless-stopped
+    deploy:
+      replicas: 2  # Option B: Multiple instances with sticky sessions (ip_hash)
     environment:
       # DynamoDB connection (available: localstack:4566)
       - DYNAMODB_ENDPOINT=http://localstack:4566
