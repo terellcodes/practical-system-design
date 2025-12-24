@@ -30,10 +30,28 @@ logger = logging.getLogger(__name__)
 class DynamoDBRepository:
     """Repository for DynamoDB operations"""
 
-    def __init__(self):
-        self.dynamodb = create_dynamodb_resource(DYNAMODB_CONFIG)
+    # Shared DynamoDB resource (initialized once in main.py)
+    _dynamodb_resource = None
+
+    def __init__(self, dynamodb_resource=None):
+        # Use provided resource or fall back to creating one (for backwards compatibility)
+        if dynamodb_resource is not None:
+            self.dynamodb = dynamodb_resource
+        elif self._dynamodb_resource is not None:
+            self.dynamodb = self._dynamodb_resource
+        else:
+            # Fallback: create new connection (logs warning)
+            logger.warning("Creating new DynamoDB connection. Consider using shared resource.")
+            self.dynamodb = create_dynamodb_resource(DYNAMODB_CONFIG)
+        
         self.chats_table = self.dynamodb.Table(CHATS_TABLE)
         self.participants_table = self.dynamodb.Table(CHAT_PARTICIPANTS_TABLE)
+    
+    @classmethod
+    def set_shared_resource(cls, dynamodb_resource):
+        """Set the shared DynamoDB resource (call once on startup)"""
+        cls._dynamodb_resource = dynamodb_resource
+        logger.info("Shared DynamoDB resource configured")
 
     # =========================================================================
     # Chat Operations

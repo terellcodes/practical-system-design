@@ -49,7 +49,7 @@ async def websocket_chat(
     # Accept connection first (required before any WebSocket operations)
     await ws_module.manager.connect(websocket, chat_id)
     
-    # Then verify chat exists
+    # Then verify chat exists (uses shared DynamoDB resource)
     repo = DynamoDBRepository()
     chat = repo.get_chat(chat_id)
     

@@ -22,6 +22,7 @@ async def health_check():
     dependencies = {}
     
     try:
+        # DynamoDBRepository() now uses the shared resource (no new connection)
         repo = DynamoDBRepository()
         is_healthy = await repo.health_check()
         dependencies["dynamodb"] = "healthy" if is_healthy else "unhealthy"

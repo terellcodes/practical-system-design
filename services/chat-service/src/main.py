@@ -10,9 +10,11 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION, REDIS_URL
+from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION, REDIS_URL, DYNAMODB_CONFIG
 from src.routes import chats_router, health_router, websocket_router
 from src import websocket as ws_module
+from src.repositories.dynamodb import DynamoDBRepository
+from common.database import create_dynamodb_resource
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -46,6 +48,11 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
     logger.info("WebSocket endpoint: /chats/ws/{{chat_id}}?user_id={{user_id}}")
+    
+    # Initialize shared DynamoDB resource (reused across all requests)
+    dynamodb_resource = create_dynamodb_resource(DYNAMODB_CONFIG)
+    DynamoDBRepository.set_shared_resource(dynamodb_resource)
+    logger.info("DynamoDB resource initialized and shared")
     
     # Initialize WebSocket connection manager with Redis pub/sub
     ws_module.manager = ws_module.create_connection_manager(REDIS_URL)
