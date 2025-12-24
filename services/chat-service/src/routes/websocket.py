@@ -16,7 +16,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from src.websocket import manager
+from src import websocket as ws_module
 from src.repositories.dynamodb import DynamoDBRepository
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ async def websocket_chat(
     """
     
     # Accept connection first (required before any WebSocket operations)
-    await manager.connect(websocket, chat_id)
+    await ws_module.manager.connect(websocket, chat_id)
     
     # Then verify chat exists
     repo = DynamoDBRepository()
@@ -56,18 +56,18 @@ async def websocket_chat(
     if not chat:
         # Now we can properly close the accepted connection
         await websocket.close(code=4004, reason=f"Chat {chat_id} not found")
-        manager.disconnect(websocket, chat_id)
+        await ws_module.manager.disconnect(websocket, chat_id)
         return
     
     try:
-        # Announce user joined
+        # Announce user joined (publish to Redis, all instances will broadcast)
         join_message = json.dumps({
             "type": "system",
             "content": f"{user_id} joined the chat",
             "chat_id": chat_id,
             "timestamp": datetime.utcnow().isoformat(),
         })
-        await manager.broadcast(chat_id, join_message)
+        await ws_module.manager.publish_message(chat_id, join_message)
         
         # Handle incoming messages
         while True:
@@ -79,7 +79,7 @@ async def websocket_chat(
                 content = message.get("content", "")
                 
                 if msg_type == "message" and content:
-                    # Broadcast message to all in chat room
+                    # Publish message to Redis (all instances will broadcast to their connections)
                     outgoing = json.dumps({
                         "type": "message",
                         "content": content,
@@ -87,33 +87,33 @@ async def websocket_chat(
                         "chat_id": chat_id,
                         "timestamp": datetime.utcnow().isoformat(),
                     })
-                    await manager.broadcast(chat_id, outgoing)
+                    await ws_module.manager.publish_message(chat_id, outgoing)
                     logger.info(f"Message in {chat_id} from {user_id}: {content[:50]}...")
                     
                 elif msg_type == "ping":
                     # Respond to ping with pong
-                    await manager.send_personal(websocket, json.dumps({
+                    await ws_module.manager.send_personal(websocket, json.dumps({
                         "type": "pong",
                         "timestamp": datetime.utcnow().isoformat(),
                     }))
                     
             except json.JSONDecodeError:
-                await manager.send_personal(websocket, json.dumps({
+                await ws_module.manager.send_personal(websocket, json.dumps({
                     "type": "error",
                     "content": "Invalid JSON format",
                 }))
                 
     except WebSocketDisconnect:
-        manager.disconnect(websocket, chat_id)
+        await ws_module.manager.disconnect(websocket, chat_id)
         
-        # Announce user left
+        # Announce user left (publish to Redis)
         leave_message = json.dumps({
             "type": "system",
             "content": f"{user_id} left the chat",
             "chat_id": chat_id,
             "timestamp": datetime.utcnow().isoformat(),
         })
-        await manager.broadcast(chat_id, leave_message)
+        await ws_module.manager.publish_message(chat_id, leave_message)
         
         logger.info(f"User {user_id} disconnected from chat {chat_id}")
 
@@ -126,8 +126,8 @@ async def websocket_stats():
     Useful for monitoring and debugging.
     """
     return {
-        "total_connections": manager.get_total_connections(),
-        "active_rooms": manager.get_active_rooms(),
-        "rooms_count": len(manager.get_active_rooms()),
+        "total_connections": ws_module.manager.get_total_connections(),
+        "active_rooms": ws_module.manager.get_active_rooms(),
+        "rooms_count": len(ws_module.manager.get_active_rooms()),
     }
 

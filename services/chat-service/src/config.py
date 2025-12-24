@@ -24,6 +24,9 @@ DYNAMODB_CONFIG = DynamoDBConfig(
     secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
 )
 
+# Redis configuration (for WebSocket pub/sub)
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+
 # Logging configuration
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_LEVEL = logging.INFO

@@ -10,8 +10,9 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
+from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION, REDIS_URL
 from src.routes import chats_router, health_router, websocket_router
+from src import websocket as ws_module
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -45,12 +46,23 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
     logger.info("WebSocket endpoint: /chats/ws/{{chat_id}}?user_id={{user_id}}")
+    
+    # Initialize WebSocket connection manager with Redis pub/sub
+    ws_module.manager = ws_module.create_connection_manager(REDIS_URL)
+    await ws_module.manager.initialize()
+    logger.info(f"WebSocket manager initialized with Redis pub/sub: {REDIS_URL}")
+    
     logger.info("=" * 60)
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down...")
+    
+    # Close WebSocket manager and Redis connections
+    if ws_module.manager:
+        await ws_module.manager.close()
+        logger.info("WebSocket manager closed")
 
 
 if __name__ == "__main__":
