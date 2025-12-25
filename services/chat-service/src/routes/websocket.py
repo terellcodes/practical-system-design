@@ -79,8 +79,12 @@ async def websocket_chat(
                 content = message.get("content", "")
                 
                 if msg_type == "message" and content:
-                    # Write message to DynamoDB
-                    saved_message = repo.save_message(chat_id, user_id, content)
+                    # Get chat participants for inbox fanout
+                    participants = repo.get_participants_for_chat(chat_id)
+                    recipient_ids = [p.participant_id for p in participants if p.participant_id != user_id]
+                    
+                    # Write message to DynamoDB (Messages + Inbox tables)
+                    saved_message = repo.save_message(chat_id, user_id, content, recipient_ids)
 
                     # Publish message to Redis (all instances will broadcast to their connections)
                     outgoing = json.dumps({

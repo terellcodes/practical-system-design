@@ -42,7 +42,7 @@ awslocal dynamodb create-table \
     --billing-mode PAY_PER_REQUEST \
     2>/dev/null || echo "  ℹ️  ChatParticipants table already exists"
 
-echo  "📦 Creating Messages table"
+echo "📦 Creating Messages table..."
 awslocal dynamodb create-table \
     --table-name Messages \
     --attribute-definitions \
@@ -52,9 +52,20 @@ awslocal dynamodb create-table \
         AttributeName=chatId,KeyType=HASH \
         AttributeName=createdAt,KeyType=RANGE \
     --billing-mode PAY_PER_REQUEST \
-    # 2>/dev/null || echo "  ℹ️  Messages table already exists"
+    2>/dev/null || echo "  ℹ️  Messages table already exists"
 
-
+# Create Inbox table (user-centric message view)
+echo "📦 Creating Inbox table..."
+awslocal dynamodb create-table \
+    --table-name Inbox \
+    --attribute-definitions \
+        AttributeName=recipientId,AttributeType=S \
+        AttributeName=createdAt,AttributeType=N \
+    --key-schema \
+        AttributeName=recipientId,KeyType=HASH \
+        AttributeName=createdAt,KeyType=RANGE \
+    --billing-mode PAY_PER_REQUEST \
+    2>/dev/null || echo "  ℹ️  Inbox table already exists"
 
 # List tables to verify
 echo ""

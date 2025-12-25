@@ -22,6 +22,7 @@ from src.config import (
     CHATS_TABLE,
     CHAT_PARTICIPANTS_TABLE,
     MESSAGES_TABLE,
+    INBOX_TABLE,
     PARTICIPANT_INDEX,
 )
 
@@ -48,6 +49,7 @@ class DynamoDBRepository:
         self.chats_table = self.dynamodb.Table(CHATS_TABLE)
         self.participants_table = self.dynamodb.Table(CHAT_PARTICIPANTS_TABLE)
         self.messages_table = self.dynamodb.Table(MESSAGES_TABLE)
+        self.inbox_table = self.dynamodb.Table(INBOX_TABLE)
     
     @classmethod
     def set_shared_resource(cls, dynamodb_resource):
@@ -216,8 +218,19 @@ class DynamoDBRepository:
     # =========================================================================
     # Messages Operations
     # =========================================================================
-    def save_message(self, chat_id: str, sender_id: str, content: str) -> dict:
-        """Save a message to DynamoDB and return the message data."""
+    def save_message(self, chat_id: str, sender_id: str, content: str, recipient_ids: List[str] = None) -> dict:
+        """
+        Save a message to DynamoDB and populate inbox for all recipients.
+        
+        Args:
+            chat_id: The chat ID
+            sender_id: The sender's user ID
+            content: Message content
+            recipient_ids: List of recipient user IDs (for inbox fanout)
+        
+        Returns:
+            dict: Message data including message_id and timestamps
+        """
         try:
             import uuid
             
@@ -225,30 +238,86 @@ class DynamoDBRepository:
             message_id = f"msg-{uuid.uuid4().hex[:12]}"
             timestamp_ms = int(now.timestamp() * 1000)
             
-            item = {
+            # Save to Messages table
+            message_item = {
                 'chatId': chat_id,
-                'createdAt': timestamp_ms,  # Number type (matches schema)
+                'createdAt': timestamp_ms,
                 'messageId': message_id,
                 'senderId': sender_id,
                 'content': content,
             }
-
-            self.messages_table.put_item(Item=item)
-            logger.info(f"Message {message_id} saved to chat {chat_id}")
+            self.messages_table.put_item(Item=message_item)
+            
+            # Fanout to Inbox table for each recipient
+            if recipient_ids:
+                with self.inbox_table.batch_writer() as batch:
+                    for recipient_id in recipient_ids:
+                        inbox_item = {
+                            'recipientId': recipient_id,
+                            'createdAt': timestamp_ms,
+                            'chatId': chat_id,
+                            'messageId': message_id,
+                        }
+                        batch.put_item(Item=inbox_item)
+                
+                logger.info(f"Message {message_id} saved to chat {chat_id} and fanned out to {len(recipient_ids)} inboxes")
+            else:
+                logger.info(f"Message {message_id} saved to chat {chat_id} (no inbox fanout)")
 
             return {
                 'message_id': message_id,
                 'chat_id': chat_id,
                 'sender_id': sender_id,
                 'content': content,
-                'created_at': now.isoformat(),  # ISO string for API responses
-                'timestamp': timestamp_ms        # Unix timestamp for reference
+                'created_at': now.isoformat(),
+                'timestamp': timestamp_ms
             }
         except ClientError as e:
             logger.error(f"Failed to create message in {chat_id}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to create message: {str(e)}"
+            )
+    
+    def get_inbox_messages(
+        self, 
+        recipient_id: str, 
+        limit: int = 50, 
+        last_evaluated_key: dict = None
+    ) -> dict:
+        """
+        Get messages from a user's inbox (across all chats), sorted by time.
+        
+        Args:
+            recipient_id: The user's ID
+            limit: Maximum number of messages to return
+            last_evaluated_key: For pagination
+        
+        Returns:
+            dict with 'items' and 'last_evaluated_key'
+        """
+        try:
+            query_params = {
+                'KeyConditionExpression': Key('recipientId').eq(recipient_id),
+                'ScanIndexForward': False,  # Newest first
+                'Limit': limit
+            }
+            
+            if last_evaluated_key:
+                query_params['ExclusiveStartKey'] = last_evaluated_key
+            
+            response = self.inbox_table.query(**query_params)
+            
+            return {
+                'items': response.get('Items', []),
+                'last_evaluated_key': response.get('LastEvaluatedKey'),
+                'count': len(response.get('Items', []))
+            }
+        except ClientError as e:
+            logger.error(f"Failed to get inbox for {recipient_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get inbox: {str(e)}"
             )
 
     # =========================================================================
