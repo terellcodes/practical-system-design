@@ -278,6 +278,28 @@ class DynamoDBRepository:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to create message: {str(e)}"
             )
+        
+    # =========================================================================
+    # Inbox Operations
+    # =========================================================================
+
+    def delete_inbox_message(self, recipient_id: str, message_id: str) -> bool:
+        logger.info(f'Attempting to delete inbox message for recipient: {recipient_id} for message_id {message_id}')
+        response = self.inbox_table.get_item(Key={
+            'recipientId': recipient_id,
+            'messageId': message_id
+        })
+
+        if not response.get('Item'):
+            logger.info(f'Failed to delete message. Message does not exist in inbox for {recipient_id}')
+            return False
+
+        self.inbox_table.delete_item(Key={
+            'recipientId': recipient_id,
+            'messageId': message_id
+        })
+        logger.info('Succesfully deleted message from inbox')
+        return True
     
     def get_inbox_messages(
         self, 

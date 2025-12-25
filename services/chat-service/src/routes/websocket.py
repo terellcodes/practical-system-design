@@ -77,7 +77,7 @@ async def websocket_chat(
                 message = json.loads(data)
                 msg_type = message.get("type", "message")
                 content = message.get("content", "")
-                
+
                 if msg_type == "message" and content:
                     # Get chat participants for inbox fanout
                     participants = repo.get_participants_for_chat(chat_id)
@@ -97,7 +97,12 @@ async def websocket_chat(
                     })
                     await ws_module.manager.publish_message(chat_id, outgoing)
                     logger.info(f"Message {saved_message['message_id']} in {chat_id} from {user_id}: {content[:50]}...")
-                    
+
+                elif msg_type == "ack-message-recieved":
+                    message_id = message.get("message_id", None)
+                    recipient_id = message.get("recipient_id", None)
+                    repo.delete_inbox_message(recipient_id, message_id)
+                    logger.info(f"Successfully acknowledge reciept of message")
                 elif msg_type == "ping":
                     # Respond to ping with pong
                     await ws_module.manager.send_personal(websocket, json.dumps({

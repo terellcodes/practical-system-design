@@ -419,6 +419,13 @@
                     } else if (data.type === 'message') {
                         const from = data.sender_id === userId ? 'You' : data.sender_id;
                         addMessage(clientId, `${from}: ${data.content}`, 'received');
+
+                        const ackMessageData = JSON.stringify({
+                            type: "ack-message-recieved",
+                            message_id: data.message_id,
+                            recipient_id: userId,
+                        })
+                        ws.send(ackMessageData);
                     } else {
                         addMessage(clientId, event.data, 'received');
                     }

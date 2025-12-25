@@ -1,0 +1,32 @@
+{
+  // Reduce error noise while typing
+  "editor.renderValidationDecorations": "on",
+  
+  // Python-specific: Only run diagnostics on save, not while typing
+  "python.analysis.diagnosticMode": "workspace",
+  
+  // Reduce type checking noise
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportGeneralTypeIssues": "none",
+    "reportOptionalMemberAccess": "none",
+    "reportOptionalSubscript": "none",
+    "reportPrivateImportUsage": "none"
+  },
+  
+  // Reduce type checking strictness
+  "python.analysis.typeCheckingMode": "basic",
+  
+  // Only lint on save, not while typing
+  "python.linting.enabled": true,
+  "python.linting.lintOnSave": true,
+  
+  // Reduce inline suggestion noise
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": false
+  },
+  
+  // Don't show problems panel automatically
+  "problems.showCurrentInStatus": false
+}

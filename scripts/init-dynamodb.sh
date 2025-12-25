@@ -60,10 +60,10 @@ awslocal dynamodb create-table \
     --table-name Inbox \
     --attribute-definitions \
         AttributeName=recipientId,AttributeType=S \
-        AttributeName=createdAt,AttributeType=N \
+        AttributeName=messageId,AttributeType=S \
     --key-schema \
         AttributeName=recipientId,KeyType=HASH \
-        AttributeName=createdAt,KeyType=RANGE \
+        AttributeName=messageId,KeyType=RANGE \
     --billing-mode PAY_PER_REQUEST \
     2>/dev/null || echo "  ℹ️  Inbox table already exists"
 
