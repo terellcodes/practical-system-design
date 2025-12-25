@@ -42,6 +42,20 @@ awslocal dynamodb create-table \
     --billing-mode PAY_PER_REQUEST \
     2>/dev/null || echo "  ℹ️  ChatParticipants table already exists"
 
+echo  "📦 Creating Messages table"
+awslocal dynamodb create-table \
+    --table-name Messages \
+    --attribute-definitions \
+        AttributeName=chatId,AttributeType=S \
+        AttributeName=createdAt,AttributeType=N \
+    --key-schema \
+        AttributeName=chatId,KeyType=HASH \
+        AttributeName=createdAt,KeyType=RANGE \
+    --billing-mode PAY_PER_REQUEST \
+    # 2>/dev/null || echo "  ℹ️  Messages table already exists"
+
+
+
 # List tables to verify
 echo ""
 echo "✅ DynamoDB tables created:"

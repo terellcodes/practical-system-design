@@ -79,16 +79,20 @@ async def websocket_chat(
                 content = message.get("content", "")
                 
                 if msg_type == "message" and content:
+                    # Write message to DynamoDB
+                    saved_message = repo.save_message(chat_id, user_id, content)
+
                     # Publish message to Redis (all instances will broadcast to their connections)
                     outgoing = json.dumps({
                         "type": "message",
+                        "message_id": saved_message['message_id'],
                         "content": content,
                         "sender_id": user_id,
                         "chat_id": chat_id,
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "created_at": saved_message['created_at'],
                     })
                     await ws_module.manager.publish_message(chat_id, outgoing)
-                    logger.info(f"Message in {chat_id} from {user_id}: {content[:50]}...")
+                    logger.info(f"Message {saved_message['message_id']} in {chat_id} from {user_id}: {content[:50]}...")
                     
                 elif msg_type == "ping":
                     # Respond to ping with pong
@@ -101,6 +105,11 @@ async def websocket_chat(
                 await ws_module.manager.send_personal(websocket, json.dumps({
                     "type": "error",
                     "content": "Invalid JSON format",
+                }))
+            except Exception as err:
+                await ws_module.manager.send_personal(websocket, json.dumps({
+                    "type": "error",
+                    "content": str(err),
                 }))
                 
     except WebSocketDisconnect:

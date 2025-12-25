@@ -24,6 +24,11 @@ from common.models.responses import (
     HealthResponse,
 )
 
+from common.models.messages import (
+    MessageCreate,
+    Message
+)
+
 __all__ = [
     # User models
     "User",
@@ -35,6 +40,9 @@ __all__ = [
     "ChatParticipant",
     "AddParticipantsRequest",
     "ChatWithParticipants",
+    # Message models
+    "Message",
+    "MessageCreate",
     # Response models
     "MessageResponse",
     "HealthResponse",

@@ -14,6 +14,7 @@ SERVICE_VERSION = "1.0.0"
 # Table names
 CHATS_TABLE = os.getenv("CHATS_TABLE", "Chats")
 CHAT_PARTICIPANTS_TABLE = os.getenv("CHAT_PARTICIPANTS_TABLE", "ChatParticipants")
+MESSAGES_TABLE = os.getenv("MESSAGES_TABLE", "Messages")
 PARTICIPANT_INDEX = "participantId-index"
 
 # DynamoDB configuration (using common utilities)

@@ -21,6 +21,7 @@ from src.config import (
     DYNAMODB_CONFIG,
     CHATS_TABLE,
     CHAT_PARTICIPANTS_TABLE,
+    MESSAGES_TABLE,
     PARTICIPANT_INDEX,
 )
 
@@ -46,6 +47,7 @@ class DynamoDBRepository:
         
         self.chats_table = self.dynamodb.Table(CHATS_TABLE)
         self.participants_table = self.dynamodb.Table(CHAT_PARTICIPANTS_TABLE)
+        self.messages_table = self.dynamodb.Table(MESSAGES_TABLE)
     
     @classmethod
     def set_shared_resource(cls, dynamodb_resource):
@@ -210,6 +212,48 @@ class DynamoDBRepository:
             return 'Item' in response
         except ClientError:
             return False
+        
+    # =========================================================================
+    # Messages Operations
+    # =========================================================================
+    def save_message(self, chat_id: str, sender_id: str, content: str) -> dict:
+        """Save a message to DynamoDB and return the message data."""
+        try:
+            import uuid
+            
+            now = datetime.utcnow()
+            message_id = f"msg-{uuid.uuid4().hex[:12]}"
+            timestamp_ms = int(now.timestamp() * 1000)
+            
+            item = {
+                'chatId': chat_id,
+                'createdAt': timestamp_ms,  # Number type (matches schema)
+                'messageId': message_id,
+                'senderId': sender_id,
+                'content': content,
+            }
+
+            self.messages_table.put_item(Item=item)
+            logger.info(f"Message {message_id} saved to chat {chat_id}")
+
+            return {
+                'message_id': message_id,
+                'chat_id': chat_id,
+                'sender_id': sender_id,
+                'content': content,
+                'created_at': now.isoformat(),  # ISO string for API responses
+                'timestamp': timestamp_ms        # Unix timestamp for reference
+            }
+        except ClientError as e:
+            logger.error(f"Failed to create message in {chat_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create message: {str(e)}"
+            )
+
+    # =========================================================================
+    # Health Check Operations
+    # =========================================================================
 
     async def health_check(self) -> bool:
         """Check DynamoDB connectivity."""
