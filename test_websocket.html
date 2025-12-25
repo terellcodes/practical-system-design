@@ -207,7 +207,10 @@
             <input type="text" id="createdBy" value="alice" placeholder="Enter your user ID">
         </div>
         
-        <button class="btn-create" onclick="createChatRoom()">🚀 Create Chat Room & Add Participants</button>
+        <div class="button-group" style="margin-top: 15px;">
+            <button class="btn-create" onclick="createChatRoom()">🚀 Create Chat Room & Add Participants</button>
+            <button class="btn-create" onclick="populateDummyChatHistory()" style="background: #FF9800;">📝 Populate Dummy Chat History</button>
+        </div>
         
         <div id="setupStatus"></div>
         
@@ -322,6 +325,244 @@
         // Store WebSocket connections
         const connections = {};
 
+        /**
+         * Load chat history from localStorage and display it
+         * Storage structure: chat-history-{userId} -> {chatId: [messages]}
+         * @param {string} chatId - The chat room ID
+         * @param {string} clientId - The client identifier (alice, bob, charlie)
+         * @param {string} userId - The user ID for this client
+         */
+        function loadChatHistory(chatId, clientId, userId) {
+            const storageKey = `chat-history-${userId}`;
+            const storedData = localStorage.getItem(storageKey);
+            
+            if (!storedData) {
+                return; // No history to load
+            }
+            
+            try {
+                const userChatHistory = JSON.parse(storedData);
+                const historyMessages = userChatHistory[chatId] || [];
+                
+                if (historyMessages.length === 0) {
+                    return; // No messages for this chat
+                }
+                
+                // Clear existing messages
+                document.getElementById(`messages-${clientId}`).innerHTML = '';
+                
+                // Display all stored messages
+                historyMessages.forEach(msg => {
+                    if (msg.type === 'system') {
+                        addMessage(clientId, msg.content, 'system');
+                    } else if (msg.type === 'message') {
+                        const from = msg.sender_id === userId ? 'You' : msg.sender_id;
+                        addMessage(clientId, `${from}: ${msg.content}`, msg.sender_id === userId ? 'sent' : 'received');
+                    }
+                });
+                
+                addMessage(clientId, `--- Loaded ${historyMessages.length} messages from history ---`, 'system');
+            } catch (e) {
+                console.error('Error loading chat history:', e);
+                addMessage(clientId, 'Error loading chat history', 'system');
+            }
+        }
+
+        /**
+         * Save a message to localStorage chat history
+         * Storage structure: chat-history-{userId} -> {chatId: [messages]}
+         * @param {string} chatId - The chat room ID
+         * @param {string} userId - The user ID for this client
+         * @param {object} messageData - The message data from WebSocket
+         * @param {string} fallbackContent - Fallback content if messageData doesn't have content
+         * @returns {boolean} - Returns true if message was saved, false if duplicate
+         */
+        function saveMessageToHistory(chatId, userId, messageData, fallbackContent = '') {
+            const storageKey = `chat-history-${userId}`;
+            let userChatHistory = {};
+            
+            try {
+                const stored = localStorage.getItem(storageKey);
+                if (stored) {
+                    userChatHistory = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error('Error reading chat history:', e);
+                return false;
+            }
+            
+            // Initialize chat array if it doesn't exist
+            if (!userChatHistory[chatId]) {
+                userChatHistory[chatId] = [];
+            }
+            
+            const historyMessages = userChatHistory[chatId];
+            
+            // Create message object for storage
+            const messageToStore = {
+                message_id: messageData.message_id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                sender_id: messageData.sender_id || 'system',
+                content: messageData.content || fallbackContent,
+                created_at: messageData.created_at || new Date().toISOString(),
+                type: messageData.type || 'message',
+                chat_id: chatId
+            };
+            
+            // Check if message already exists (avoid duplicates)
+            const exists = historyMessages.some(msg => msg.message_id === messageToStore.message_id);
+            if (exists) {
+                return false; // Duplicate, not saved
+            }
+            
+            historyMessages.push(messageToStore);
+            localStorage.setItem(storageKey, JSON.stringify(userChatHistory));
+            return true; // Successfully saved
+        }
+
+        // Populate dummy chat history for testing
+        function populateDummyChatHistory() {
+            const chatId = document.getElementById('chatId-alice').value || 'chat-test-123';
+            const statusDiv = document.getElementById('setupStatus');
+            
+            // Generate realistic timestamps (last hour)
+            const now = new Date();
+            const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+            
+            const dummyMessages = [
+                {
+                    message_id: "msg-001",
+                    sender_id: "system",
+                    content: "alice created the chat",
+                    created_at: new Date(oneHourAgo.getTime() + 0 * 60000).toISOString(),
+                    type: "system",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-002",
+                    sender_id: "alice",
+                    content: "Hello everyone! Welcome to the test chat room 🎉",
+                    created_at: new Date(oneHourAgo.getTime() + 1 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-003",
+                    sender_id: "system",
+                    content: "bob joined the chat",
+                    created_at: new Date(oneHourAgo.getTime() + 2 * 60000).toISOString(),
+                    type: "system",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-004",
+                    sender_id: "bob",
+                    content: "Hey Alice! Thanks for setting this up. How's it going?",
+                    created_at: new Date(oneHourAgo.getTime() + 3 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-005",
+                    sender_id: "alice",
+                    content: "Doing great! Just testing the WebSocket functionality. How about you?",
+                    created_at: new Date(oneHourAgo.getTime() + 4 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-006",
+                    sender_id: "system",
+                    content: "charlie joined the chat",
+                    created_at: new Date(oneHourAgo.getTime() + 5 * 60000).toISOString(),
+                    type: "system",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-007",
+                    sender_id: "charlie",
+                    content: "Hey guys! What did I miss?",
+                    created_at: new Date(oneHourAgo.getTime() + 6 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-008",
+                    sender_id: "bob",
+                    content: "Not much, just getting started. We're testing the chat system.",
+                    created_at: new Date(oneHourAgo.getTime() + 7 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-009",
+                    sender_id: "alice",
+                    content: "Perfect timing! We can test message persistence and history loading.",
+                    created_at: new Date(oneHourAgo.getTime() + 8 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-010",
+                    sender_id: "charlie",
+                    content: "Sounds good! Let's see if the history loads correctly when we reconnect.",
+                    created_at: new Date(oneHourAgo.getTime() + 9 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-011",
+                    sender_id: "bob",
+                    content: "This is a longer message to test how the UI handles messages with more content. It should wrap nicely and display properly in the chat interface.",
+                    created_at: new Date(oneHourAgo.getTime() + 10 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                },
+                {
+                    message_id: "msg-012",
+                    sender_id: "alice",
+                    content: "Great! The formatting looks good. Ready to test real-time messaging?",
+                    created_at: new Date(oneHourAgo.getTime() + 11 * 60000).toISOString(),
+                    type: "message",
+                    chat_id: chatId
+                }
+            ];
+            
+            // Store in localStorage for each user: chat-history-{userId} -> {chatId: [messages]}
+            const users = ['alice', 'bob', 'charlie'];
+            users.forEach(userId => {
+                const storageKey = `chat-history-${userId}`;
+                const userChatHistory = {
+                    [chatId]: dummyMessages
+                };
+                localStorage.setItem(storageKey, JSON.stringify(userChatHistory));
+            });
+            
+            // Update chat ID inputs if they're empty
+            if (!document.getElementById('chatId-alice').value) {
+                document.getElementById('chatId-alice').value = chatId;
+            }
+            if (!document.getElementById('chatId-bob').value) {
+                document.getElementById('chatId-bob').value = chatId;
+            }
+            if (!document.getElementById('chatId-charlie').value) {
+                document.getElementById('chatId-charlie').value = chatId;
+            }
+            
+            statusDiv.innerHTML = `<div class="success-message">✅ Dummy chat history created!<br>
+                <strong>Chat ID:</strong> ${chatId}<br>
+                <strong>Messages:</strong> ${dummyMessages.length} messages per user<br>
+                <strong>Users:</strong> alice, bob, charlie<br>
+                <strong>Storage Keys:</strong> chat-history-alice, chat-history-bob, chat-history-charlie<br>
+                <em>Each user has their own chat history storage!</em></div>`;
+            
+            console.log('Dummy chat history stored:', {
+                chatId: chatId,
+                users: users,
+                messageCount: dummyMessages.length,
+                storageStructure: 'chat-history-{userId} -> {chatId: [messages]}'
+            });
+        }
+
         // Create chat room and add participants
         async function createChatRoom() {
             const roomName = document.getElementById('chatRoomName').value;
@@ -402,6 +643,9 @@
             if (connections[clientId]) {
                 connections[clientId].close();
             }
+
+            // Load chat history from localStorage
+            loadChatHistory(chatId, clientId, userId);
             
             // Create WebSocket connection (FIXED: removed extra /chat/)
             const ws = new WebSocket(`ws://localhost/api/chats/ws/${chatId}?user_id=${userId}`);
@@ -414,12 +658,15 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+
+                    // Display message
                     if (data.type === 'system') {
                         addMessage(clientId, data.content, 'system');
                     } else if (data.type === 'message') {
                         const from = data.sender_id === userId ? 'You' : data.sender_id;
                         addMessage(clientId, `${from}: ${data.content}`, 'received');
-
+                        // Save message to localStorage
+                        saveMessageToHistory(chatId, userId, data, event.data);
                         const ackMessageData = JSON.stringify({
                             type: "ack-message-recieved",
                             message_id: data.message_id,
