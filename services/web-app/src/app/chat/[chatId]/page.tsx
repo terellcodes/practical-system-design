@@ -34,24 +34,27 @@ export default function ChatConversationPage() {
     );
   }, [messagesByChat, chatId]);
 
-  // Wrap sendMessage to include chatId
+  // Send text or text+attachment
   const handleSendMessage = useCallback(
-    (content: string) => {
-      sendMessage(chatId, content);
-    },
-    [chatId, sendMessage]
-  );
-
-  const handleUploadFile = useCallback(
-    async (file: File) => {
+    async (content: string, file?: File | null) => {
       if (!userId) return;
+
+      // Text-only: use existing WebSocket send
+      if (!file) {
+        sendMessage(chatId, content);
+        return;
+      }
+
+      // Attachment flow: request presigned URL, upload, and rely on consumer to deliver
       const contentType = file.type || "application/octet-stream";
+      const fallbackContent = content || `[Attachment: ${file.name}]`;
 
       try {
         const uploadReq = await chatApi.requestUpload(chatId, {
           sender_id: userId,
           filename: file.name,
           content_type: contentType,
+          content: fallbackContent,
         });
 
         // Add a local pending message placeholder
@@ -59,7 +62,7 @@ export default function ChatConversationPage() {
           message_id: uploadReq.message_id,
           chat_id: chatId,
           sender_id: userId,
-          content: `[Attachment: ${file.name}]`,
+          content: fallbackContent,
           created_at: new Date().toISOString(),
           type: "message",
           upload_status: "PENDING",
@@ -81,18 +84,17 @@ export default function ChatConversationPage() {
         }
       } catch (err) {
         console.error("Upload failed", err);
-        // Mark as failed if we already created a pending message
         addMessage(chatId, {
-          message_id: `pending-${file.name}-${Date.now()}`,
+          message_id: `pending-${file?.name ?? "attachment"}-${Date.now()}`,
           chat_id: chatId,
           sender_id: userId,
-          content: `[Attachment failed: ${file.name}]`,
+          content: `[Attachment failed: ${file?.name ?? "file"}]`,
           created_at: new Date().toISOString(),
           type: "system",
         });
       }
     },
-    [chatId, userId, addMessage, bumpChat]
+    [chatId, userId, addMessage, bumpChat, sendMessage]
   );
 
   // Update document title with chat name
@@ -133,7 +135,6 @@ export default function ChatConversationPage() {
       <div className="sticky bottom-0 bg-card/90 backdrop-blur border-t border-border px-4 py-3">
         <MessageInput
           onSend={handleSendMessage}
-          onUploadFile={handleUploadFile}
           disabled={!isConnected}
         />
       </div>

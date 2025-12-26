@@ -6,24 +6,25 @@ import { Input } from "@/components/ui/input";
 import { Send } from "lucide-react";
 
 interface MessageInputProps {
-  onSend: (content: string) => void;
-  onUploadFile?: (file: File) => void;
+  onSend: (content: string, file?: File | null) => void;
   disabled?: boolean;
 }
 
-export function MessageInput({ onSend, onUploadFile, disabled }: MessageInputProps) {
+export function MessageInput({ onSend, disabled }: MessageInputProps) {
   const [message, setMessage] = useState("");
+  const [file, setFile] = useState<File | null>(null);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
       const trimmed = message.trim();
-      if (trimmed && !disabled) {
-        onSend(trimmed);
+      if (!disabled && (trimmed || file)) {
+        onSend(trimmed, file);
         setMessage("");
+        setFile(null);
       }
     },
-    [message, onSend, disabled]
+    [message, file, onSend, disabled]
   );
 
   const handleKeyDown = useCallback(
@@ -47,14 +48,26 @@ export function MessageInput({ onSend, onUploadFile, disabled }: MessageInputPro
           accept="image/*,video/*"
           disabled={disabled}
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file && onUploadFile && !disabled) {
-              onUploadFile(file);
-              e.target.value = "";
-            }
+            const selected = e.target.files?.[0] ?? null;
+            setFile(selected);
           }}
           className="max-w-xs text-xs"
         />
+        {file && (
+          <div className="flex items-center gap-2 text-xs bg-muted px-2 py-1 rounded">
+            <span className="truncate max-w-[140px]">{file.name}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setFile(null)}
+              disabled={disabled}
+              className="h-6 px-2"
+            >
+              Clear
+            </Button>
+          </div>
+        )}
         <Input
           type="text"
           placeholder="Type a message..."
@@ -68,7 +81,7 @@ export function MessageInput({ onSend, onUploadFile, disabled }: MessageInputPro
         <Button
           type="submit"
           size="icon"
-          disabled={!message.trim() || disabled}
+          disabled={(!message.trim() && !file) || disabled}
           className="shrink-0"
         >
           <Send className="w-4 h-4" />
