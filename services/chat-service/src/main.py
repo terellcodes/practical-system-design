@@ -47,7 +47,7 @@ app.include_router(websocket_router, prefix="/chats")
 async def startup_event():
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
-    logger.info("WebSocket endpoint: /chats/ws/{{chat_id}}?user_id={{user_id}}")
+    logger.info("WebSocket endpoint: /chats/ws?user_id={{user_id}} (user-centric, single connection)")
     
     # Initialize shared DynamoDB resource (reused across all requests)
     dynamodb_resource = create_dynamodb_resource(DYNAMODB_CONFIG)

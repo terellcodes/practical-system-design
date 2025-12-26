@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { MessageCircle, Wifi, WifiOff } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useChatStore } from "@/store/chat-store";
-import { useWebSocket } from "@/hooks/use-websocket";
+import { useWebSocket } from "@/contexts/websocket-context";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageInput } from "@/components/chat/message-input";
 
@@ -13,6 +13,9 @@ export default function ChatConversationPage() {
   const chatId = params.chatId as string;
 
   const { userId, chats, messagesByChat } = useChatStore();
+  
+  // Get WebSocket from context (single connection for all chats)
+  const { isConnected, sendMessage } = useWebSocket();
 
   // Find the current chat to get its name
   const currentChat = useMemo(
@@ -29,11 +32,13 @@ export default function ChatConversationPage() {
     );
   }, [messagesByChat, chatId]);
 
-  // Connect to WebSocket
-  const { isConnected, sendMessage } = useWebSocket({
-    chatId,
-    userId: userId || "",
-  });
+  // Wrap sendMessage to include chatId
+  const handleSendMessage = useCallback(
+    (content: string) => {
+      sendMessage(chatId, content);
+    },
+    [chatId, sendMessage]
+  );
 
   // Update document title with chat name
   useEffect(() => {
@@ -52,7 +57,7 @@ export default function ChatConversationPage() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
-      <div className="h-16 px-6 flex items-center justify-between border-b border-border bg-card">
+      <div className="h-16 px-6 flex items-center border-b border-border bg-card">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
             <MessageCircle className="w-5 h-5 text-primary" />
@@ -64,28 +69,13 @@ export default function ChatConversationPage() {
             <p className="text-xs text-muted-foreground font-mono">{chatId}</p>
           </div>
         </div>
-
-        {/* Connection status */}
-        <div className="flex items-center gap-2">
-          {isConnected ? (
-            <div className="flex items-center gap-1.5 text-xs text-primary">
-              <Wifi className="w-4 h-4" />
-              <span>Connected</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <WifiOff className="w-4 h-4" />
-              <span>Connecting...</span>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Message List */}
       <MessageList messages={messages} currentUserId={userId} />
 
       {/* Message Input */}
-      <MessageInput onSend={sendMessage} disabled={!isConnected} />
+      <MessageInput onSend={handleSendMessage} disabled={!isConnected} />
     </div>
   );
 }

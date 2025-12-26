@@ -103,10 +103,10 @@ export const chatApi = {
   },
 };
 
-// WebSocket URL helper
-export function getWebSocketUrl(chatId: string, userId: string): string {
+// WebSocket URL helper - User-centric (single connection per user)
+export function getWebSocketUrl(userId: string): string {
   const wsBase =
     process.env.NEXT_PUBLIC_WS_URL || "ws://localhost/api/chats";
-  return `${wsBase}/ws/${chatId}?user_id=${userId}`;
+  return `${wsBase}/ws?user_id=${userId}`;
 }
 

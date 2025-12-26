@@ -6,15 +6,17 @@ import { useChatStore } from "@/store/chat-store";
 import { chatApi } from "@/lib/api";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { CreateChatDialog } from "@/components/chat/create-chat-dialog";
-import { Loader2 } from "lucide-react";
+import { WebSocketProvider, useWebSocket } from "@/contexts/websocket-context";
+import { Loader2, Wifi, WifiOff } from "lucide-react";
 
-export default function ChatLayout({
+function ChatLayoutContent({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const { userId, setChats, addChat, _hasHydrated } = useChatStore();
+  const { isConnected, subscribeToChat } = useWebSocket();
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -52,6 +54,9 @@ export default function ChatLayout({
     // Add to local store
     addChat(newChat);
     
+    // Subscribe to the new chat via WebSocket
+    subscribeToChat(newChat.id);
+    
     // Navigate to the new chat
     router.push(`/chat/${newChat.id}`);
   };
@@ -71,7 +76,23 @@ export default function ChatLayout({
   return (
     <div className="h-screen flex bg-background">
       <ChatSidebar onCreateChat={() => setCreateDialogOpen(true)} />
-      <main className="flex-1 flex flex-col">{children}</main>
+      <main className="flex-1 flex flex-col">
+        {/* Global connection status bar */}
+        <div className="h-8 px-4 flex items-center justify-end border-b border-border bg-card/50 text-xs">
+          {isConnected ? (
+            <div className="flex items-center gap-1.5 text-primary">
+              <Wifi className="w-3 h-3" />
+              <span>Connected</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <WifiOff className="w-3 h-3" />
+              <span>Connecting...</span>
+            </div>
+          )}
+        </div>
+        {children}
+      </main>
       
       <CreateChatDialog
         open={createDialogOpen}
@@ -82,3 +103,14 @@ export default function ChatLayout({
   );
 }
 
+export default function ChatLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <WebSocketProvider>
+      <ChatLayoutContent>{children}</ChatLayoutContent>
+    </WebSocketProvider>
+  );
+}

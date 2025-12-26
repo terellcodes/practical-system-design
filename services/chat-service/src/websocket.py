@@ -1,19 +1,19 @@
 """
-WebSocket Connection Manager with Redis Pub/Sub
+WebSocket Connection Manager with Redis Pub/Sub - User-Centric Model
 
-Handles real-time WebSocket connections for chat rooms.
-This is Option C: Redis pub/sub - messages broadcast across all instances.
+Handles real-time WebSocket connections for users (not chat rooms).
+Each user has ONE WebSocket connection that receives messages from ALL their chats.
 
 Architecture:
-- Each instance maintains its own local WebSocket connections
-- When a message is sent, it's published to Redis channel: "chat:{chat_id}"
-- All instances subscribed to that channel receive the message
-- Each instance broadcasts the message to its local WebSocket connections
+- Each user has one WebSocket connection
+- On connect: subscribe to Redis channels for ALL chats user is part of
+- Messages from any chat are routed through the user's single connection
+- Supports dynamic subscription when user joins/leaves chats
 """
 
 import asyncio
 import logging
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List
 from fastapi import WebSocket
 import redis.asyncio as aioredis
 
@@ -22,32 +22,37 @@ logger = logging.getLogger(__name__)
 
 class ConnectionManager:
     """
-    Manages WebSocket connections for chat rooms with Redis pub/sub.
+    User-centric WebSocket manager with Redis pub/sub.
     
     Data structure:
-        - active_connections: chat_id -> Set of local WebSocket connections
-        - subscribed_channels: chat_id -> pubsub object for that channel
+        - user_connections: user_id -> WebSocket connection
+        - user_subscriptions: user_id -> Set of chat_ids they're subscribed to
+        - user_pubsubs: user_id -> PubSub object handling all their subscriptions
+        - user_tasks: user_id -> asyncio.Task for listening to messages
     
     Example:
-        active_connections = {
-            "chat-abc123": {ws1, ws2, ws3},
-            "chat-def456": {ws4, ws5},
+        user_connections = {
+            "alice": ws1,
+            "bob": ws2,
         }
-        subscribed_channels = {
-            "chat-abc123": <PubSub object>,
-            "chat-def456": <PubSub object>,
+        user_subscriptions = {
+            "alice": {"chat-abc", "chat-def", "chat-xyz"},
+            "bob": {"chat-abc", "chat-ghi"},
         }
     """
     
     def __init__(self, redis_url: str):
-        # chat_id -> set of active local WebSocket connections
-        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        # user_id -> WebSocket connection (one per user)
+        self.user_connections: Dict[str, WebSocket] = {}
         
-        # chat_id -> Redis PubSub object for listening
-        self.subscribed_channels: Dict[str, aioredis.client.PubSub] = {}
+        # user_id -> Set of chat_ids they're subscribed to
+        self.user_subscriptions: Dict[str, Set[str]] = {}
         
-        # chat_id -> asyncio.Task for the listener
-        self.listener_tasks: Dict[str, asyncio.Task] = {}
+        # user_id -> Redis PubSub object
+        self.user_pubsubs: Dict[str, aioredis.client.PubSub] = {}
+        
+        # user_id -> asyncio.Task for the listener
+        self.user_tasks: Dict[str, asyncio.Task] = {}
         
         # Redis client for publishing
         self.redis_url = redis_url
@@ -65,12 +70,11 @@ class ConnectionManager:
     async def close(self):
         """Close all Redis connections. Call this on shutdown."""
         # Cancel all listener tasks
-        for task in self.listener_tasks.values():
+        for task in self.user_tasks.values():
             task.cancel()
         
-        # Unsubscribe from all channels
-        for pubsub in self.subscribed_channels.values():
-            await pubsub.unsubscribe()
+        # Close all pubsub connections
+        for pubsub in self.user_pubsubs.values():
             await pubsub.close()
         
         # Close main Redis client
@@ -79,60 +83,116 @@ class ConnectionManager:
         
         logger.info("Redis connections closed")
     
-    async def _subscribe_to_channel(self, chat_id: str) -> None:
+    async def connect(self, websocket: WebSocket, user_id: str, chat_ids: List[str]) -> None:
         """
-        Subscribe to a Redis pub/sub channel for a chat room.
-        Starts a background task to listen for messages.
-        """
-        channel = f"chat:{chat_id}"
+        Accept a new WebSocket connection for a user.
+        Subscribes to Redis channels for all their chats.
         
-        try:
-            # Create a new pubsub object for this channel
-            pubsub = self.redis_client.pubsub()
-            await pubsub.subscribe(channel)
-            
-            # Store the pubsub object
-            self.subscribed_channels[chat_id] = pubsub
-            
-            # Start background task to listen for messages
-            task = asyncio.create_task(self._listen_to_channel(chat_id, pubsub))
-            self.listener_tasks[chat_id] = task
-            
-            logger.info(f"Subscribed to Redis channel: {channel}")
-        except Exception as e:
-            logger.error(f"Failed to subscribe to Redis channel {channel}: {e}")
+        Args:
+            websocket: The WebSocket connection
+            user_id: The user's ID
+            chat_ids: List of chat IDs the user is part of
+        """
+        await websocket.accept()
+        
+        # Store the connection
+        self.user_connections[user_id] = websocket
+        self.user_subscriptions[user_id] = set(chat_ids)
+        
+        # Create pubsub and subscribe to all chat channels
+        pubsub = self.redis_client.pubsub()
+        self.user_pubsubs[user_id] = pubsub
+        
+        # Subscribe to all chat channels
+        if chat_ids:
+            channels = [f"chat:{chat_id}" for chat_id in chat_ids]
+            await pubsub.subscribe(*channels)
+            logger.info(f"User {user_id} subscribed to {len(chat_ids)} channels: {channels}")
+        
+        # Start background task to listen for messages
+        task = asyncio.create_task(self._listen_for_user(user_id, pubsub))
+        self.user_tasks[user_id] = task
+        
+        logger.info(f"User {user_id} connected. Total users: {len(self.user_connections)}")
     
-    async def _unsubscribe_from_channel(self, chat_id: str) -> None:
+    async def disconnect(self, user_id: str) -> None:
         """
-        Unsubscribe from a Redis pub/sub channel and cleanup.
+        Remove a user's WebSocket connection and cleanup.
         """
-        if chat_id in self.subscribed_channels:
-            channel = f"chat:{chat_id}"
-            
-            try:
-                # Cancel the listener task
-                if chat_id in self.listener_tasks:
-                    self.listener_tasks[chat_id].cancel()
-                    del self.listener_tasks[chat_id]
-                
-                # Unsubscribe and close pubsub
-                pubsub = self.subscribed_channels[chat_id]
-                await pubsub.unsubscribe(channel)
-                await pubsub.close()
-                
-                del self.subscribed_channels[chat_id]
-                
-                logger.info(f"Unsubscribed from Redis channel: {channel}")
-            except Exception as e:
-                logger.error(f"Failed to unsubscribe from Redis channel {channel}: {e}")
+        # Cancel listener task
+        if user_id in self.user_tasks:
+            self.user_tasks[user_id].cancel()
+            del self.user_tasks[user_id]
+        
+        # Close pubsub
+        if user_id in self.user_pubsubs:
+            pubsub = self.user_pubsubs[user_id]
+            await pubsub.unsubscribe()
+            await pubsub.close()
+            del self.user_pubsubs[user_id]
+        
+        # Remove connection and subscriptions
+        if user_id in self.user_connections:
+            del self.user_connections[user_id]
+        if user_id in self.user_subscriptions:
+            del self.user_subscriptions[user_id]
+        
+        logger.info(f"User {user_id} disconnected. Total users: {len(self.user_connections)}")
     
-    async def _listen_to_channel(self, chat_id: str, pubsub: aioredis.client.PubSub) -> None:
+    async def subscribe_to_chat(self, user_id: str, chat_id: str) -> bool:
         """
-        Background task that listens for messages on a Redis pub/sub channel.
-        When a message arrives, broadcasts it to all local WebSocket connections.
+        Dynamically subscribe a connected user to a new chat.
+        Called when user joins a chat while already connected.
+        
+        Returns True if subscription was added, False if user not connected.
         """
+        if user_id not in self.user_pubsubs:
+            logger.warning(f"Cannot subscribe {user_id} to {chat_id}: user not connected")
+            return False
+        
+        # Add to subscriptions set
+        if user_id not in self.user_subscriptions:
+            self.user_subscriptions[user_id] = set()
+        
+        if chat_id in self.user_subscriptions[user_id]:
+            logger.debug(f"User {user_id} already subscribed to {chat_id}")
+            return True
+        
+        # Subscribe to the new channel
         channel = f"chat:{chat_id}"
-        logger.info(f"Started listening to Redis channel: {channel}")
+        await self.user_pubsubs[user_id].subscribe(channel)
+        self.user_subscriptions[user_id].add(chat_id)
+        
+        logger.info(f"User {user_id} dynamically subscribed to {chat_id}")
+        return True
+    
+    async def unsubscribe_from_chat(self, user_id: str, chat_id: str) -> bool:
+        """
+        Dynamically unsubscribe a connected user from a chat.
+        Called when user leaves a chat while still connected.
+        
+        Returns True if unsubscribed, False if user not connected.
+        """
+        if user_id not in self.user_pubsubs:
+            return False
+        
+        if chat_id not in self.user_subscriptions.get(user_id, set()):
+            return True  # Already not subscribed
+        
+        # Unsubscribe from the channel
+        channel = f"chat:{chat_id}"
+        await self.user_pubsubs[user_id].unsubscribe(channel)
+        self.user_subscriptions[user_id].discard(chat_id)
+        
+        logger.info(f"User {user_id} unsubscribed from {chat_id}")
+        return True
+    
+    async def _listen_for_user(self, user_id: str, pubsub: aioredis.client.PubSub) -> None:
+        """
+        Background task that listens for messages on all subscribed channels.
+        Routes messages to the user's WebSocket connection.
+        """
+        logger.info(f"Started listening for user {user_id}")
         
         try:
             async for message in pubsub.listen():
@@ -140,58 +200,24 @@ class ConnectionManager:
                 if message["type"] != "message":
                     continue
                 
-                # Get the message data
+                # Get the message data and send to user's WebSocket
                 message_data = message["data"]
                 
-                # Broadcast to all local WebSocket connections
-                await self._broadcast_to_local_connections(chat_id, message_data)
-                
+                if user_id in self.user_connections:
+                    try:
+                        await self.user_connections[user_id].send_text(message_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to send message to {user_id}: {e}")
+                        
         except asyncio.CancelledError:
-            logger.info(f"Listener task cancelled for {channel}")
+            logger.info(f"Listener task cancelled for user {user_id}")
         except Exception as e:
-            logger.error(f"Error in listener task for {channel}: {e}")
-    
-    async def connect(self, websocket: WebSocket, chat_id: str) -> None:
-        """
-        Accept a new WebSocket connection and add to chat room.
-        If this is the first connection for this room, subscribe to Redis channel.
-        """
-        await websocket.accept()
-        
-        # Add to local connections
-        if chat_id not in self.active_connections:
-            self.active_connections[chat_id] = set()
-        
-        self.active_connections[chat_id].add(websocket)
-        
-        # Subscribe to Redis channel if this is the first connection for this room
-        if chat_id not in self.subscribed_channels:
-            await self._subscribe_to_channel(chat_id)
-        
-        logger.info(f"Client connected to chat {chat_id}. "
-                    f"Total connections in room: {len(self.active_connections[chat_id])}")
-    
-    async def disconnect(self, websocket: WebSocket, chat_id: str) -> None:
-        """
-        Remove a WebSocket connection from chat room.
-        If this was the last connection, unsubscribe from Redis channel.
-        """
-        if chat_id in self.active_connections:
-            self.active_connections[chat_id].discard(websocket)
-            
-            # If no more local connections, unsubscribe from Redis
-            if not self.active_connections[chat_id]:
-                del self.active_connections[chat_id]
-                await self._unsubscribe_from_channel(chat_id)
-                logger.info(f"Chat room {chat_id} is now empty, unsubscribed from Redis")
-            else:
-                logger.info(f"Client disconnected from chat {chat_id}. "
-                           f"Remaining connections: {len(self.active_connections[chat_id])}")
+            logger.error(f"Error in listener task for user {user_id}: {e}")
     
     async def publish_message(self, chat_id: str, message: str) -> None:
         """
-        Publish a message to Redis pub/sub channel.
-        All instances subscribed to this channel will receive and broadcast it.
+        Publish a message to a chat's Redis channel.
+        All users subscribed to this chat will receive it.
         
         Args:
             chat_id: The chat room to broadcast to
@@ -204,53 +230,31 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Failed to publish to Redis: {e}")
     
-    async def _broadcast_to_local_connections(self, chat_id: str, message: str) -> None:
+    async def send_personal(self, user_id: str, message: str) -> None:
         """
-        Broadcast a message to all LOCAL WebSocket connections for this room.
-        This is called when we receive a message from Redis pub/sub.
-        
-        Args:
-            chat_id: The chat room
-            message: The message to send to all local connections
+        Send a message directly to a specific user.
         """
-        if chat_id not in self.active_connections:
-            return
-        
-        disconnected = set()
-        
-        for connection in self.active_connections[chat_id]:
+        if user_id in self.user_connections:
             try:
-                await connection.send_text(message)
+                await self.user_connections[user_id].send_text(message)
             except Exception as e:
-                logger.warning(f"Failed to send message to WebSocket: {e}")
-                disconnected.add(connection)
-        
-        # Clean up any connections that failed
-        for conn in disconnected:
-            self.active_connections[chat_id].discard(conn)
-        
-        logger.debug(f"Broadcasted to {len(self.active_connections[chat_id])} local connections in {chat_id}")
+                logger.warning(f"Failed to send personal message to {user_id}: {e}")
     
-    async def send_personal(self, websocket: WebSocket, message: str) -> None:
-        """
-        Send a message to a specific connection.
-        """
-        try:
-            await websocket.send_text(message)
-        except Exception as e:
-            logger.warning(f"Failed to send personal message: {e}")
+    def is_user_connected(self, user_id: str) -> bool:
+        """Check if a user is currently connected."""
+        return user_id in self.user_connections
     
-    def get_connection_count(self, chat_id: str) -> int:
-        """Get number of connections in a chat room."""
-        return len(self.active_connections.get(chat_id, set()))
+    def get_user_subscriptions(self, user_id: str) -> Set[str]:
+        """Get the set of chat_ids a user is subscribed to."""
+        return self.user_subscriptions.get(user_id, set())
     
     def get_total_connections(self) -> int:
-        """Get total number of active connections across all rooms."""
-        return sum(len(conns) for conns in self.active_connections.values())
+        """Get total number of connected users."""
+        return len(self.user_connections)
     
-    def get_active_rooms(self) -> list:
-        """Get list of chat rooms with active connections."""
-        return list(self.active_connections.keys())
+    def get_connected_users(self) -> list:
+        """Get list of connected user IDs."""
+        return list(self.user_connections.keys())
 
 
 # Global connection manager instance (initialized in main.py on startup)
@@ -260,4 +264,3 @@ manager: Optional[ConnectionManager] = None
 def create_connection_manager(redis_url: str) -> ConnectionManager:
     """Factory function to create and return a ConnectionManager instance."""
     return ConnectionManager(redis_url)
-

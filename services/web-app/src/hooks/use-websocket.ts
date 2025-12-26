@@ -2,69 +2,78 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useChatStore } from "@/store/chat-store";
-import { getWebSocketUrl, chatApi } from "@/lib/api";
-import type { Message, WSMessage } from "@/types";
+import { getWebSocketUrl } from "@/lib/api";
+import type { Message } from "@/types";
 
-interface UseWebSocketOptions {
-  chatId: string;
-  userId: string;
-  onMessage?: (message: Message) => void;
+/**
+ * WebSocket message types from server
+ */
+interface WSConnectedMessage {
+  type: "connected";
+  user_id: string;
+  subscribed_chats: string[];
+  timestamp: string;
 }
 
-interface UseWebSocketReturn {
+interface WSChatMessage {
+  type: "message";
+  message_id: string;
+  chat_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+}
+
+interface WSSystemMessage {
+  type: "system";
+  content: string;
+  chat_id: string;
+  timestamp: string;
+}
+
+interface WSSubscribedMessage {
+  type: "subscribed" | "unsubscribed";
+  chat_id: string;
+  success: boolean;
+}
+
+interface WSErrorMessage {
+  type: "error";
+  content: string;
+}
+
+interface WSPongMessage {
+  type: "pong";
+  timestamp: string;
+}
+
+type WSMessage = 
+  | WSConnectedMessage 
+  | WSChatMessage 
+  | WSSystemMessage 
+  | WSSubscribedMessage 
+  | WSErrorMessage 
+  | WSPongMessage;
+
+interface UseUserWebSocketReturn {
   isConnected: boolean;
-  sendMessage: (content: string) => void;
+  subscribedChats: string[];
+  sendMessage: (chatId: string, content: string) => void;
+  subscribeToChat: (chatId: string) => void;
+  unsubscribeFromChat: (chatId: string) => void;
 }
 
-export function useWebSocket({
-  chatId,
-  userId,
-  onMessage,
-}: UseWebSocketOptions): UseWebSocketReturn {
+/**
+ * User-centric WebSocket hook.
+ * 
+ * Creates ONE WebSocket connection per user that receives messages
+ * from ALL chats they're part of. Should be used at the app/layout level.
+ */
+export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
   const { addMessage, bumpChat } = useChatStore();
-
-  // Sync undelivered messages from inbox on connect
-  const syncInbox = useCallback(async () => {
-    try {
-      const response = await chatApi.syncMessages(chatId, userId);
-      const messageIdsToAck: string[] = [];
-
-      // Add each message to store
-      response.items.forEach((item) => {
-        const message: Message = {
-          message_id: item.message_id,
-          chat_id: item.chat_id,
-          sender_id: item.sender_id,
-          content: item.content,
-          created_at: item.created_at,
-          type: "message",
-        };
-        addMessage(chatId, message);
-        messageIdsToAck.push(item.message_id);
-      });
-
-      // Acknowledge messages via WebSocket
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        messageIdsToAck.forEach((messageId) => {
-          wsRef.current?.send(
-            JSON.stringify({
-              type: "ack-message-recieved",
-              message_id: messageId,
-              recipient_id: userId,
-            })
-          );
-        });
-      }
-
-      if (response.items.length > 0) {
-        bumpChat(chatId);
-      }
-    } catch (error) {
-      console.error("Failed to sync inbox:", error);
-    }
-  }, [chatId, userId, addMessage, bumpChat]);
 
   // Handle incoming WebSocket messages
   const handleMessage = useCallback(
@@ -72,62 +81,96 @@ export function useWebSocket({
       try {
         const data: WSMessage = JSON.parse(event.data);
 
-        if (data.type === "message" && data.content) {
-          const message: Message = {
-            message_id: data.message_id || `msg-${Date.now()}`,
-            chat_id: data.chat_id || chatId,
-            sender_id: data.sender_id || "unknown",
-            content: data.content,
-            created_at: data.created_at || new Date().toISOString(),
-            type: "message",
-          };
+        switch (data.type) {
+          case "connected":
+            console.log(`WebSocket connected for user ${data.user_id}, subscribed to ${data.subscribed_chats.length} chats`);
+            setSubscribedChats(data.subscribed_chats);
+            break;
 
-          addMessage(chatId, message);
-          bumpChat(chatId);
-          onMessage?.(message);
+          case "message": {
+            const message: Message = {
+              message_id: data.message_id,
+              chat_id: data.chat_id,
+              sender_id: data.sender_id,
+              content: data.content,
+              created_at: data.created_at,
+              type: "message",
+            };
 
-          // Acknowledge receipt
-          if (wsRef.current && data.message_id) {
-            wsRef.current.send(
-              JSON.stringify({
-                type: "ack-message-recieved",
-                message_id: data.message_id,
-                recipient_id: userId,
-              })
-            );
+            addMessage(data.chat_id, message);
+            bumpChat(data.chat_id);
+
+            // Acknowledge receipt
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              wsRef.current.send(
+                JSON.stringify({
+                  type: "ack-message-received",
+                  message_id: data.message_id,
+                })
+              );
+            }
+            break;
           }
-        } else if (data.type === "system" && data.content) {
-          // Handle system messages (user joined/left)
-          const message: Message = {
-            message_id: `system-${Date.now()}`,
-            chat_id: chatId,
-            sender_id: "system",
-            content: data.content,
-            created_at: data.timestamp || new Date().toISOString(),
-            type: "system",
-          };
-          addMessage(chatId, message);
+
+          case "system": {
+            const systemMessage: Message = {
+              message_id: `system-${Date.now()}`,
+              chat_id: data.chat_id,
+              sender_id: "system",
+              content: data.content,
+              created_at: data.timestamp,
+              type: "system",
+            };
+            addMessage(data.chat_id, systemMessage);
+            break;
+          }
+
+          case "subscribed":
+            if (data.success) {
+              setSubscribedChats((prev) => 
+                prev.includes(data.chat_id) ? prev : [...prev, data.chat_id]
+              );
+              console.log(`Subscribed to chat ${data.chat_id}`);
+            }
+            break;
+
+          case "unsubscribed":
+            if (data.success) {
+              setSubscribedChats((prev) => prev.filter((id) => id !== data.chat_id));
+              console.log(`Unsubscribed from chat ${data.chat_id}`);
+            }
+            break;
+
+          case "error":
+            console.error("WebSocket error:", data.content);
+            break;
+
+          case "pong":
+            // Heartbeat response, can be used for connection health
+            break;
         }
       } catch (error) {
         console.error("Failed to parse WebSocket message:", error);
       }
     },
-    [chatId, userId, addMessage, bumpChat, onMessage]
+    [addMessage, bumpChat]
   );
 
   // Connect to WebSocket
   useEffect(() => {
-    if (!chatId || !userId) return;
+    if (!userId) {
+      return;
+    }
 
-    const url = getWebSocketUrl(chatId, userId);
+    const url = getWebSocketUrl(userId);
+    console.log(`Connecting to WebSocket: ${url}`);
+    
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log(`WebSocket connected to chat ${chatId}`);
+      console.log("WebSocket connection opened");
       setIsConnected(true);
-      // Sync inbox after connection
-      syncInbox();
     };
 
     ws.onmessage = handleMessage;
@@ -139,19 +182,20 @@ export function useWebSocket({
     ws.onclose = (event) => {
       console.log(`WebSocket closed: ${event.code} ${event.reason}`);
       setIsConnected(false);
+      setSubscribedChats([]);
     };
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
       wsRef.current = null;
     };
-  }, [chatId, userId, handleMessage, syncInbox]);
+  }, [userId, handleMessage]);
 
-  // Send message function
+  // Send a message to a specific chat
   const sendMessage = useCallback(
-    (content: string) => {
+    (chatId: string, content: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         console.error("WebSocket not connected");
         return;
@@ -160,6 +204,7 @@ export function useWebSocket({
       wsRef.current.send(
         JSON.stringify({
           type: "message",
+          chat_id: chatId,
           content,
         })
       );
@@ -167,9 +212,44 @@ export function useWebSocket({
       // Bump chat to top when sending
       bumpChat(chatId);
     },
-    [chatId, bumpChat]
+    [bumpChat]
   );
 
-  return { isConnected, sendMessage };
-}
+  // Subscribe to a new chat (after joining)
+  const subscribeToChat = useCallback((chatId: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.error("WebSocket not connected");
+      return;
+    }
 
+    wsRef.current.send(
+      JSON.stringify({
+        type: "subscribe",
+        chat_id: chatId,
+      })
+    );
+  }, []);
+
+  // Unsubscribe from a chat (after leaving)
+  const unsubscribeFromChat = useCallback((chatId: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.error("WebSocket not connected");
+      return;
+    }
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: "unsubscribe",
+        chat_id: chatId,
+      })
+    );
+  }, []);
+
+  return {
+    isConnected,
+    subscribedChats,
+    sendMessage,
+    subscribeToChat,
+    unsubscribeFromChat,
+  };
+}
