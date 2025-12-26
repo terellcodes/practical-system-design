@@ -28,6 +28,8 @@ from common.models.messages import (
     MessageCreate,
     Message,
     UploadStatus,
+    UploadRequest,
+    UploadRequestResponse,
 )
 
 from common.models.inbox import (
@@ -48,6 +50,8 @@ __all__ = [
     "Message",
     "MessageCreate",
     "UploadStatus",
+    "UploadRequest",
+    "UploadRequestResponse",
     # Inbox models
     "InboxList",
     # Response models

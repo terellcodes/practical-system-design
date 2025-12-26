@@ -6,6 +6,7 @@ import os
 import logging
 
 from common.database import DynamoDBConfig
+from common.storage import S3Config
 
 # Service info
 SERVICE_NAME = "chat-service"
@@ -25,6 +26,21 @@ DYNAMODB_CONFIG = DynamoDBConfig(
     access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
     secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
 )
+
+# S3 configuration (for media uploads)
+IS_LOCAL = os.getenv("IS_LOCAL", "true").lower() == "true"
+S3_CONFIG = S3Config(
+    region=os.getenv("AWS_REGION", "us-east-1"),
+    endpoint_url=os.getenv("S3_ENDPOINT", "http://localstack:4566") if IS_LOCAL else None,
+    access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
+    secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+    bucket_name=os.getenv("S3_BUCKET", "chat-media"),
+)
+
+# Kafka configuration (for event streaming)
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+KAFKA_UPLOAD_COMPLETED_TOPIC = os.getenv("KAFKA_UPLOAD_COMPLETED_TOPIC", "upload-completed")
+KAFKA_UPLOAD_FAILED_TOPIC = os.getenv("KAFKA_UPLOAD_FAILED_TOPIC", "upload-failed")
 
 # Redis configuration (for WebSocket pub/sub)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
