@@ -218,15 +218,31 @@ class DynamoDBRepository:
     # =========================================================================
     # Messages Operations
     # =========================================================================
-    def save_message(self, chat_id: str, sender_id: str, content: str, recipient_ids: Optional[List[str]] = None) -> dict:
+    def save_message(
+        self, 
+        chat_id: str, 
+        sender_id: str, 
+        content: str, 
+        recipient_ids: Optional[List[str]] = None,
+        # Attachment fields (optional)
+        upload_status: Optional[str] = None,
+        s3_bucket: Optional[str] = None,
+        s3_object_key: Optional[str] = None,
+    ) -> dict:
         """
         Save a message to DynamoDB and populate inbox for all recipients.
+        
+        For messages with attachments (upload_status=PENDING), inbox fanout is skipped.
+        The fanout happens later when upload completes via Kafka consumer.
         
         Args:
             chat_id: The chat ID
             sender_id: The sender's user ID
             content: Message content
             recipient_ids: List of recipient user IDs (for inbox fanout)
+            upload_status: Optional upload status (PENDING, COMPLETED, FAILED)
+            s3_bucket: Optional S3 bucket name for attachment
+            s3_object_key: Optional S3 object key for attachment
         
         Returns:
             dict: Message data including message_id and timestamps
@@ -246,10 +262,22 @@ class DynamoDBRepository:
                 'senderId': sender_id,
                 'content': content,
             }
+            
+            # Add attachment fields if present
+            if upload_status:
+                message_item['uploadStatus'] = upload_status
+            if s3_bucket:
+                message_item['s3Bucket'] = s3_bucket
+            if s3_object_key:
+                message_item['s3ObjectKey'] = s3_object_key
+            
             self.messages_table.put_item(Item=message_item)
             
             # Fanout to Inbox table for each recipient
-            if recipient_ids:
+            # Skip fanout for PENDING messages - they'll be fanned out when upload completes
+            is_pending_upload = upload_status == "PENDING"
+            
+            if recipient_ids and not is_pending_upload:
                 with self.inbox_table.batch_writer() as batch:
                     for recipient_id in recipient_ids:
                         inbox_item = {
@@ -261,10 +289,13 @@ class DynamoDBRepository:
                         batch.put_item(Item=inbox_item)
                 
                 logger.info(f"Message {message_id} saved to chat {chat_id} and fanned out to {len(recipient_ids)} inboxes")
+            elif is_pending_upload:
+                logger.info(f"Message {message_id} saved to chat {chat_id} with PENDING upload (inbox fanout deferred)")
             else:
                 logger.info(f"Message {message_id} saved to chat {chat_id} (no inbox fanout)")
 
-            return {
+            # Build response
+            response = {
                 'message_id': message_id,
                 'chat_id': chat_id,
                 'sender_id': sender_id,
@@ -272,12 +303,81 @@ class DynamoDBRepository:
                 'created_at': now.isoformat(),
                 'timestamp': timestamp_ms
             }
+            
+            # Include attachment fields in response if present
+            if upload_status:
+                response['upload_status'] = upload_status
+            if s3_bucket:
+                response['s3_bucket'] = s3_bucket
+            if s3_object_key:
+                response['s3_object_key'] = s3_object_key
+            
+            return response
         except ClientError as e:
             logger.error(f"Failed to create message in {chat_id}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to create message: {str(e)}"
             )
+    
+    def update_message_upload_status(self, message_id: str, created_at: int, upload_status: str) -> bool:
+        """
+        Update the upload status of a message (used by Kafka consumer after upload completes).
+        
+        Args:
+            message_id: The message ID
+            created_at: The message creation timestamp (part of sort key)
+            upload_status: New status (COMPLETED or FAILED)
+        
+        Returns:
+            bool: True if update succeeded
+        """
+        try:
+            self.messages_table.update_item(
+                Key={
+                    'messageId': message_id,
+                    'createdAt': created_at
+                },
+                UpdateExpression='SET uploadStatus = :status',
+                ExpressionAttributeValues={
+                    ':status': upload_status
+                }
+            )
+            logger.info(f"Updated message {message_id} upload status to {upload_status}")
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to update message {message_id} upload status: {e}")
+            return False
+    
+    def fanout_message_to_inbox(self, message_id: str, chat_id: str, created_at: int, recipient_ids: List[str]) -> bool:
+        """
+        Fanout a message to recipients' inboxes (used after upload completes).
+        
+        Args:
+            message_id: The message ID
+            chat_id: The chat ID
+            created_at: The message creation timestamp
+            recipient_ids: List of recipient user IDs
+        
+        Returns:
+            bool: True if fanout succeeded
+        """
+        try:
+            with self.inbox_table.batch_writer() as batch:
+                for recipient_id in recipient_ids:
+                    inbox_item = {
+                        'recipientId': recipient_id,
+                        'createdAt': created_at,
+                        'chatId': chat_id,
+                        'messageId': message_id,
+                    }
+                    batch.put_item(Item=inbox_item)
+            
+            logger.info(f"Message {message_id} fanned out to {len(recipient_ids)} inboxes")
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to fanout message {message_id}: {e}")
+            return False
         
     # =========================================================================
     # Inbox Operations
@@ -343,21 +443,32 @@ class DynamoDBRepository:
 
             items = zip(items, inbox_messages)
             
-            # Convert DynamoDB items to InboxItem models
+            # Convert DynamoDB items to Message models
             inbox_message_list = []
-            for message in inbox_messages:
+            for msg_item in inbox_messages:
                 
                 # Convert createdAt from Decimal to float before division
-                message_created_at_ms = float(message.get('createdAt', 0))
+                message_created_at_ms = float(msg_item.get('createdAt', 0))
                 message_created_at_dt = datetime.fromtimestamp(message_created_at_ms / 1000.0)
                 
-                message = Message(
-                    message_id=message.get('messageId', ''),
-                    chat_id=message.get('chatId', ''),
-                    sender_id=message.get('senderId', ''),
-                    content=message.get('content', ''),
-                    created_at=message_created_at_dt
-                )
+                # Build message with optional attachment fields
+                message_data = {
+                    'message_id': msg_item.get('messageId', ''),
+                    'chat_id': msg_item.get('chatId', ''),
+                    'sender_id': msg_item.get('senderId', ''),
+                    'content': msg_item.get('content', ''),
+                    'created_at': message_created_at_dt
+                }
+                
+                # Include attachment fields if present
+                if msg_item.get('uploadStatus'):
+                    message_data['upload_status'] = msg_item.get('uploadStatus')
+                if msg_item.get('s3Bucket'):
+                    message_data['s3_bucket'] = msg_item.get('s3Bucket')
+                if msg_item.get('s3ObjectKey'):
+                    message_data['s3_object_key'] = msg_item.get('s3ObjectKey')
+                
+                message = Message(**message_data)
                 inbox_message_list.append(message)
             
             
