@@ -26,7 +26,8 @@ from common.models.responses import (
 
 from common.models.messages import (
     MessageCreate,
-    Message
+    Message,
+    UploadStatus,
 )
 
 from common.models.inbox import (
@@ -46,6 +47,7 @@ __all__ = [
     # Message models
     "Message",
     "MessageCreate",
+    "UploadStatus",
     # Inbox models
     "InboxList",
     # Response models

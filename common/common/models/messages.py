@@ -7,9 +7,17 @@ Used by:
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List
 
 from pydantic import BaseModel, Field
+
+
+class UploadStatus(str, Enum):
+    """Status of media upload for a message"""
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 class MessageCreate(BaseModel):
@@ -17,6 +25,11 @@ class MessageCreate(BaseModel):
     chat_id: str = Field(..., description="Chat ID this message belongs to")
     sender_id: str = Field(..., description="ID of the user sending the message")
     content: str = Field(..., min_length=1, max_length=5000, description="Message content")
+    
+    # Attachment fields (optional)
+    has_attachment: bool = Field(default=False, description="Whether message has a file attachment")
+    attachment_filename: Optional[str] = Field(default=None, description="Original filename of attachment")
+    attachment_content_type: Optional[str] = Field(default=None, description="MIME type of attachment (e.g., image/jpeg)")
 
     class Config:
         json_schema_extra = {
@@ -35,6 +48,11 @@ class Message(BaseModel):
     sender_id: str = Field(..., description="ID of the user who sent the message")
     content: str = Field(..., description="Message content")
     created_at: datetime = Field(..., description="Timestamp when message was created")
+    
+    # Attachment fields (optional - only present for media messages)
+    upload_status: Optional[UploadStatus] = Field(default=None, description="Status of media upload: PENDING, COMPLETED, or FAILED")
+    s3_bucket: Optional[str] = Field(default=None, description="S3 bucket where attachment is stored")
+    s3_object_key: Optional[str] = Field(default=None, description="S3 object key for the attachment")
 
     class Config:
         json_schema_extra = {
