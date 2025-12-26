@@ -23,6 +23,9 @@ interface WSChatMessage {
   sender_id: string;
   content: string;
   created_at: string;
+  upload_status?: "PENDING" | "COMPLETED" | "FAILED";
+  s3_bucket?: string;
+  s3_key?: string;
 }
 
 interface WSSystemMessage {
@@ -95,6 +98,9 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
           content: item.content,
           created_at: item.created_at,
           type: "message",
+          upload_status: (item as any).upload_status,
+          s3_bucket: (item as any).s3_bucket,
+          s3_key: (item as any).s3_object_key || (item as any).s3_key,
         };
 
         addMessage(item.chat_id, message);
@@ -136,6 +142,9 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
               content: data.content,
               created_at: data.created_at,
               type: "message",
+              upload_status: data.upload_status,
+              s3_bucket: data.s3_bucket,
+              s3_key: data.s3_key,
             };
 
             addMessage(data.chat_id, message);

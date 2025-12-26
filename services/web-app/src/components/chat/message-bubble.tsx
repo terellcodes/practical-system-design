@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { buildS3PublicUrl } from "@/lib/api";
 import type { Message } from "@/types";
 
 interface MessageBubbleProps {
@@ -48,6 +49,28 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         <p className="text-sm whitespace-pre-wrap break-words">
           {message.content}
         </p>
+
+        {/* Attachment (link) */}
+        {message.s3_bucket && message.s3_key && (
+          <div className="mt-2">
+            <a
+              className={cn(
+                "text-xs underline",
+                isOwn ? "text-primary-foreground" : "text-primary"
+              )}
+              href={buildS3PublicUrl(message.s3_bucket, message.s3_key)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Attachment
+            </a>
+            {message.upload_status && (
+              <span className="ml-2 text-[10px] uppercase tracking-wide">
+                {message.upload_status}
+              </span>
+            )}
+          </div>
+        )}
         
         {/* Timestamp */}
         <p

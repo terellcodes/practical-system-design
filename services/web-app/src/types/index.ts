@@ -20,6 +20,8 @@ export interface ChatWithParticipants {
   participants: ChatParticipant[];
 }
 
+export type UploadStatus = "PENDING" | "COMPLETED" | "FAILED" | undefined;
+
 export interface Message {
   message_id: string;
   chat_id: string;
@@ -27,6 +29,10 @@ export interface Message {
   content: string;
   created_at: string;
   type: "message" | "system";
+  // Attachment fields (optional)
+  upload_status?: UploadStatus;
+  s3_bucket?: string;
+  s3_key?: string;
 }
 
 export interface User {

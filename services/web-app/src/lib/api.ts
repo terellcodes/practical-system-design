@@ -3,6 +3,11 @@
  */
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost/api";
+const LOCALSTACK_HOST = process.env.NEXT_PUBLIC_LOCALSTACK_HOST || "localhost";
+const S3_PUBLIC_BASE =
+  process.env.NEXT_PUBLIC_S3_PUBLIC_URL || "http://localhost:4566";
+export const S3_BUCKET =
+  process.env.NEXT_PUBLIC_S3_BUCKET || "chat-media";
 
 interface ApiError {
   detail: string;
@@ -99,6 +104,26 @@ export const chatApi = {
       recipient_id: string;
     }>(response);
   },
+
+  // Request a presigned upload URL for an attachment
+  requestUpload: async (chatId: string, params: {
+    sender_id: string;
+    filename: string;
+    content_type: string;
+    content?: string;
+  }) => {
+    const response = await fetch(`${API_BASE}/chats/${chatId}/messages/upload-request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    return handleResponse<{
+      message_id: string;
+      upload_url: string;
+      s3_key: string;
+      expires_in: number;
+    }>(response);
+  },
 };
 
 // WebSocket URL helper - User-centric (single connection per user)
@@ -106,5 +131,15 @@ export function getWebSocketUrl(userId: string): string {
   const wsBase =
     process.env.NEXT_PUBLIC_WS_URL || "ws://localhost/api/chats";
   return `${wsBase}/ws?user_id=${userId}`;
+}
+
+// Replace internal localstack host with host-accessible URL for uploads/downloads
+export function normalizeLocalstackUrl(url: string): string {
+  return url.replace("http://localstack", `http://${LOCALSTACK_HOST}`);
+}
+
+// Build a public S3 URL (LocalStack) for rendering attachments
+export function buildS3PublicUrl(bucket: string, key: string): string {
+  return `${S3_PUBLIC_BASE}/${bucket}/${key}`;
 }
 

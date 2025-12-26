@@ -7,10 +7,11 @@ import { Send } from "lucide-react";
 
 interface MessageInputProps {
   onSend: (content: string) => void;
+  onUploadFile?: (file: File) => void;
   disabled?: boolean;
 }
 
-export function MessageInput({ onSend, disabled }: MessageInputProps) {
+export function MessageInput({ onSend, onUploadFile, disabled }: MessageInputProps) {
   const [message, setMessage] = useState("");
 
   const handleSubmit = useCallback(
@@ -41,6 +42,19 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
       className="p-4 border-t border-border bg-card"
     >
       <div className="flex items-center gap-2">
+        <Input
+          type="file"
+          accept="image/*,video/*"
+          disabled={disabled}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file && onUploadFile && !disabled) {
+              onUploadFile(file);
+              e.target.value = "";
+            }
+          }}
+          className="max-w-xs text-xs"
+        />
         <Input
           type="text"
           placeholder="Type a message..."

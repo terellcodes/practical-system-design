@@ -87,14 +87,27 @@ export const useChatStore = create<ChatState>()(
       addMessage: (chatId, message) =>
         set((state) => {
           const existingMessages = state.messagesByChat[chatId] || [];
-          // Avoid duplicates by checking message_id
-          if (existingMessages.some((m) => m.message_id === message.message_id)) {
-            return state;
+          const idx = existingMessages.findIndex(
+            (m) => m.message_id === message.message_id
+          );
+
+          // Upsert: replace if exists, otherwise append
+          let updatedMessages: Message[];
+          if (idx >= 0) {
+            const merged = { ...existingMessages[idx], ...message };
+            updatedMessages = [
+              ...existingMessages.slice(0, idx),
+              merged,
+              ...existingMessages.slice(idx + 1),
+            ];
+          } else {
+            updatedMessages = [...existingMessages, message];
           }
+
           return {
             messagesByChat: {
               ...state.messagesByChat,
-              [chatId]: [...existingMessages, message],
+              [chatId]: updatedMessages,
             },
           };
         }),

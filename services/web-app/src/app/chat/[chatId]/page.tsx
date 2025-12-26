@@ -7,12 +7,14 @@ import { useChatStore } from "@/store/chat-store";
 import { useWebSocket } from "@/contexts/websocket-context";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageInput } from "@/components/chat/message-input";
+import { chatApi, normalizeLocalstackUrl, S3_BUCKET } from "@/lib/api";
+import type { Message } from "@/types";
 
 export default function ChatConversationPage() {
   const params = useParams();
   const chatId = params.chatId as string;
 
-  const { userId, chats, messagesByChat } = useChatStore();
+  const { userId, chats, messagesByChat, addMessage, bumpChat } = useChatStore();
   
   // Get WebSocket from context (single connection for all chats)
   const { isConnected, sendMessage } = useWebSocket();
@@ -38,6 +40,59 @@ export default function ChatConversationPage() {
       sendMessage(chatId, content);
     },
     [chatId, sendMessage]
+  );
+
+  const handleUploadFile = useCallback(
+    async (file: File) => {
+      if (!userId) return;
+      const contentType = file.type || "application/octet-stream";
+
+      try {
+        const uploadReq = await chatApi.requestUpload(chatId, {
+          sender_id: userId,
+          filename: file.name,
+          content_type: contentType,
+        });
+
+        // Add a local pending message placeholder
+        const pendingMessage: Message = {
+          message_id: uploadReq.message_id,
+          chat_id: chatId,
+          sender_id: userId,
+          content: `[Attachment: ${file.name}]`,
+          created_at: new Date().toISOString(),
+          type: "message",
+          upload_status: "PENDING",
+          s3_bucket: S3_BUCKET,
+          s3_key: uploadReq.s3_key,
+        };
+        addMessage(chatId, pendingMessage);
+        bumpChat(chatId);
+
+        // PUT the file to the presigned URL (swap host for local dev)
+        const uploadUrl = normalizeLocalstackUrl(uploadReq.upload_url);
+        const resp = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": contentType },
+          body: file,
+        });
+        if (!resp.ok) {
+          throw new Error(`Upload failed: HTTP ${resp.status}`);
+        }
+      } catch (err) {
+        console.error("Upload failed", err);
+        // Mark as failed if we already created a pending message
+        addMessage(chatId, {
+          message_id: `pending-${file.name}-${Date.now()}`,
+          chat_id: chatId,
+          sender_id: userId,
+          content: `[Attachment failed: ${file.name}]`,
+          created_at: new Date().toISOString(),
+          type: "system",
+        });
+      }
+    },
+    [chatId, userId, addMessage, bumpChat]
   );
 
   // Update document title with chat name
@@ -76,7 +131,11 @@ export default function ChatConversationPage() {
 
       {/* Message Input (sticky) */}
       <div className="sticky bottom-0 bg-card/90 backdrop-blur border-t border-border px-4 py-3">
-        <MessageInput onSend={handleSendMessage} disabled={!isConnected} />
+        <MessageInput
+          onSend={handleSendMessage}
+          onUploadFile={handleUploadFile}
+          disabled={!isConnected}
+        />
       </div>
     </div>
   );
