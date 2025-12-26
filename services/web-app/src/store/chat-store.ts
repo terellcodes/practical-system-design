@@ -1,6 +1,22 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, type PersistStorage } from "zustand/middleware";
 import type { Chat, Message } from "@/types";
+
+const USER_KEY = "chat-user-id";
+const messagesKey = (userId: string | null) => `chat-storage-${userId ?? "guest"}`;
+const isBrowser = typeof window !== "undefined";
+
+function loadMessagesForUser(userId: string): Record<string, Message[]> {
+  if (!isBrowser) return {};
+  try {
+    const raw = localStorage.getItem(messagesKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed.messagesByChat || {};
+  } catch {
+    return {};
+  }
+}
 
 interface ChatState {
   // Hydration state
@@ -37,7 +53,13 @@ export const useChatStore = create<ChatState>()(
 
       // User identity
       userId: null,
-      setUserId: (userId) => set({ userId }),
+      setUserId: (userId) =>
+        set((state) => {
+          if (state.userId === userId) return state;
+          const messagesByChat =
+            userId && userId.length > 0 ? loadMessagesForUser(userId) : {};
+          return { userId, messagesByChat, selectedChatId: null };
+        }),
 
       // Chats
       chats: [],
@@ -79,16 +101,86 @@ export const useChatStore = create<ChatState>()(
       getMessages: (chatId) => get().messagesByChat[chatId] || [],
     }),
     {
-      name: "chat-storage",
+      name: "chat-storage", // logical name; actual storage keys are custom below
+      storage: createNamespacedStorage(),
       partialize: (state) => ({
         userId: state.userId,
         messagesByChat: state.messagesByChat,
       }),
       onRehydrateStorage: () => (state) => {
-        // Called when Zustand finishes loading from localStorage
+        // Called when Zustand finishes loading from storage
         state?.setHasHydrated(true);
       },
     }
   )
 );
+
+// Custom storage: userId in sessionStorage; messagesByChat in localStorage, namespaced by userId
+type PersistedShape = {
+  userId: string | null;
+  messagesByChat: Record<string, Message[]>;
+};
+
+function createNamespacedStorage(): PersistStorage<PersistedShape> {
+
+  return {
+    getItem: () => {
+      if (!isBrowser) return null;
+      const userId = sessionStorage.getItem(USER_KEY);
+
+      const rawMessages =
+        userId !== null ? localStorage.getItem(messagesKey(userId)) : null;
+      let messagesByChat: Record<string, Message[]> = {};
+      if (rawMessages) {
+        try {
+          const parsed = JSON.parse(rawMessages);
+          messagesByChat = parsed.messagesByChat || {};
+        } catch {
+          messagesByChat = {};
+        }
+      }
+      return {
+        state: {
+          userId,
+          messagesByChat,
+        },
+        version: 0,
+      };
+    },
+    setItem: (name, value) => {
+      if (!isBrowser) return;
+      void name;
+      try {
+        const { state } = value || {};
+        const userId = state?.userId;
+        const messagesByChat = state?.messagesByChat;
+        // store userId in sessionStorage
+        if (userId !== undefined) {
+          if (userId === null) {
+            sessionStorage.removeItem(USER_KEY);
+          } else {
+            sessionStorage.setItem(USER_KEY, userId);
+          }
+        }
+        // store messages in a user-namespaced key in localStorage
+        const key = messagesKey(userId ?? null);
+        localStorage.setItem(
+          key,
+          JSON.stringify({ messagesByChat: messagesByChat || {} })
+        );
+      } catch (e) {
+        console.error("Failed to persist chat storage", e);
+      }
+    },
+    removeItem: (name) => {
+      if (!isBrowser) return;
+      void name;
+      const userId = sessionStorage.getItem(USER_KEY);
+      if (userId !== null) {
+        localStorage.removeItem(messagesKey(userId));
+      }
+      sessionStorage.removeItem(USER_KEY);
+    },
+  };
+}
 
