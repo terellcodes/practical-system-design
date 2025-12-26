@@ -74,8 +74,10 @@ export default function ChatConversationPage() {
       {/* Message List */}
       <MessageList messages={messages} currentUserId={userId} />
 
-      {/* Message Input */}
-      <MessageInput onSend={handleSendMessage} disabled={!isConnected} />
+      {/* Message Input (sticky) */}
+      <div className="sticky bottom-0 bg-card/90 backdrop-blur border-t border-border px-4 py-3">
+        <MessageInput onSend={handleSendMessage} disabled={!isConnected} />
+      </div>
     </div>
   );
 }
