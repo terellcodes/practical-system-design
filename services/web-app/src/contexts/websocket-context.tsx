@@ -6,6 +6,7 @@ import { useChatStore } from "@/store/chat-store";
 
 interface WebSocketContextValue {
   isConnected: boolean;
+  isSyncing: boolean;
   subscribedChats: string[];
   sendMessage: (chatId: string, content: string) => void;
   subscribeToChat: (chatId: string) => void;

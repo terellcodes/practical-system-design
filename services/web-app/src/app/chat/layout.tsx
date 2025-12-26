@@ -16,7 +16,7 @@ function ChatLayoutContent({
 }) {
   const router = useRouter();
   const { userId, setChats, addChat, _hasHydrated } = useChatStore();
-  const { isConnected, subscribeToChat } = useWebSocket();
+  const { isConnected, isSyncing, subscribeToChat } = useWebSocket();
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -76,10 +76,15 @@ function ChatLayoutContent({
   return (
     <div className="h-screen flex bg-background">
       <ChatSidebar onCreateChat={() => setCreateDialogOpen(true)} />
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col overflow-hidden">
         {/* Global connection status bar */}
         <div className="h-8 px-4 flex items-center justify-end border-b border-border bg-card/50 text-xs">
-          {isConnected ? (
+          {isSyncing ? (
+            <div className="flex items-center gap-1.5 text-amber-400">
+              <Wifi className="w-3 h-3" />
+              <span>Syncing…</span>
+            </div>
+          ) : isConnected ? (
             <div className="flex items-center gap-1.5 text-primary">
               <Wifi className="w-3 h-3" />
               <span>Connected</span>
@@ -91,7 +96,9 @@ function ChatLayoutContent({
             </div>
           )}
         </div>
-        {children}
+        <div className="flex-1 min-h-0 overflow-auto flex flex-col">
+          {children}
+        </div>
       </main>
       
       <CreateChatDialog

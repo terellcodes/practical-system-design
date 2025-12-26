@@ -196,6 +196,7 @@ class ConnectionManager:
         
         try:
             async for message in pubsub.listen():
+                logger.info(f"Recived message for {user_id}", message)
                 # Ignore subscription confirmation messages
                 if message["type"] != "message":
                     continue

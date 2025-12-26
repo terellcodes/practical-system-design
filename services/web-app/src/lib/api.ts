@@ -84,11 +84,9 @@ export const chatApi = {
     >(response);
   },
 
-  // Sync undelivered messages from inbox
-  syncMessages: async (chatId: string, userId: string) => {
-    const response = await fetch(
-      `${API_BASE}/chats/${chatId}/sync?user_id=${userId}`
-    );
+  // Sync all undelivered messages (inbox) for a user across chats
+  syncInbox: async (userId: string) => {
+    const response = await fetch(`${API_BASE}/chats/inbox/sync?user_id=${userId}`);
     return handleResponse<{
       items: Array<{
         message_id: string;

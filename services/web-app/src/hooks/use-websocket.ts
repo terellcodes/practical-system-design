@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useChatStore } from "@/store/chat-store";
 import { getWebSocketUrl } from "@/lib/api";
+import { chatApi } from "@/lib/api";
 import type { Message } from "@/types";
 
 /**
@@ -57,6 +58,7 @@ type WSMessage =
 
 interface UseUserWebSocketReturn {
   isConnected: boolean;
+  isSyncing: boolean;
   subscribedChats: string[];
   sendMessage: (chatId: string, content: string) => void;
   subscribeToChat: (chatId: string) => void;
@@ -72,8 +74,47 @@ interface UseUserWebSocketReturn {
 export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
   const { addMessage, bumpChat } = useChatStore();
+
+  const syncInbox = useCallback(async () => {
+    if (!userId) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    setIsSyncing(true);
+    try {
+      const response = await chatApi.syncInbox(userId);
+      const items = response.items || [];
+
+      for (const item of items) {
+        const message: Message = {
+          message_id: item.message_id,
+          chat_id: item.chat_id,
+          sender_id: item.sender_id,
+          content: item.content,
+          created_at: item.created_at,
+          type: "message",
+        };
+
+        addMessage(item.chat_id, message);
+        bumpChat(item.chat_id);
+
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: "ack-message-received",
+              message_id: item.message_id,
+            })
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to sync inbox:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [userId, addMessage, bumpChat]);
 
   // Handle incoming WebSocket messages
   const handleMessage = useCallback(
@@ -175,6 +216,8 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
       if (!isActive) return;
       console.log("WebSocket connection opened");
       setIsConnected(true);
+      // Sync inbox on (re)connect
+      syncInbox();
     };
 
     ws.onmessage = (event) => {
@@ -204,7 +247,7 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
       }
       wsRef.current = null;
     };
-  }, [userId, handleMessage]);
+  }, [userId, handleMessage, syncInbox]);
 
   // Send a message to a specific chat
   const sendMessage = useCallback(
@@ -260,6 +303,7 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
 
   return {
     isConnected,
+    isSyncing,
     subscribedChats,
     sendMessage,
     subscribeToChat,

@@ -32,6 +32,15 @@ async def create_chat(
     return service.create_chat(chat_data)
 
 
+@router.get("/inbox/sync")
+async def sync_chat(
+    user_id: str,
+    service: ChatService = Depends(get_chat_service)
+):
+    """Fetch undelivered messsage from inbox"""
+    return service.get_messages_from_inbox(user_id)
+
+
 @router.get("/{chat_id}", response_model=ChatWithParticipants)
 async def get_chat(
     chat_id: str,
@@ -82,13 +91,4 @@ async def remove_participant(
         message=f"Participant {participant_id} removed from chat {chat_id}",
         id=chat_id
     )
-
-@router.get("/{chat_id}/sync")
-async def sync_chat(
-    chat_id: str,
-    user_id: str,
-    service: ChatService = Depends(get_chat_service)
-):
-    """Fetch undelivered messsage from inbox"""
-    return service.get_messages_from_inbox(chat_id, user_id)
 
