@@ -228,6 +228,7 @@ class DynamoDBRepository:
         upload_status: Optional[str] = None,
         s3_bucket: Optional[str] = None,
         s3_object_key: Optional[str] = None,
+        message_id: Optional[str] = None,
     ) -> dict:
         """
         Save a message to DynamoDB and populate inbox for all recipients.
@@ -251,7 +252,7 @@ class DynamoDBRepository:
             import uuid
             
             now = datetime.utcnow()
-            message_id = f"msg-{uuid.uuid4().hex[:12]}"
+            message_id = message_id or f"msg-{uuid.uuid4().hex[:12]}"
             timestamp_ms = int(now.timestamp() * 1000)
             
             # Save to Messages table

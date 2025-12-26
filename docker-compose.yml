@@ -168,6 +168,7 @@ services:
     volumes:
       - localstack_data:/var/lib/localstack
       - ./scripts:/etc/localstack/init/ready.d
+      - ./lambda:/lambda     
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
