@@ -15,6 +15,7 @@ interface ChatState {
   chats: Chat[];
   setChats: (chats: Chat[]) => void;
   addChat: (chat: Chat) => void;
+  bumpChat: (chatId: string) => void;
 
   // Selected chat
   selectedChatId: string | null;
@@ -41,7 +42,15 @@ export const useChatStore = create<ChatState>()(
       // Chats
       chats: [],
       setChats: (chats) => set({ chats }),
-      addChat: (chat) => set((state) => ({ chats: [...state.chats, chat] })),
+      addChat: (chat) => set((state) => ({ chats: [chat, ...state.chats] })),
+      bumpChat: (chatId) =>
+        set((state) => {
+          const chat = state.chats.find((c) => c.id === chatId);
+          if (!chat) return state;
+          return {
+            chats: [chat, ...state.chats.filter((c) => c.id !== chatId)],
+          };
+        }),
 
       // Selected chat
       selectedChatId: null,
