@@ -162,6 +162,9 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
       return;
     }
 
+    // Track if effect is still active (handles React Strict Mode)
+    let isActive = true;
+
     const url = getWebSocketUrl(userId);
     console.log(`Connecting to WebSocket: ${url}`);
     
@@ -169,23 +172,33 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (!isActive) return;
       console.log("WebSocket connection opened");
       setIsConnected(true);
     };
 
-    ws.onmessage = handleMessage;
+    ws.onmessage = (event) => {
+      if (!isActive) return;
+      handleMessage(event);
+    };
 
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
+    ws.onerror = () => {
+      // WebSocket error events don't contain useful info
+      // The close event will provide the actual error details
+      if (isActive) {
+        console.warn("WebSocket connection error (details in close event)");
+      }
     };
 
     ws.onclose = (event) => {
+      if (!isActive) return;
       console.log(`WebSocket closed: ${event.code} ${event.reason}`);
       setIsConnected(false);
       setSubscribedChats([]);
     };
 
     return () => {
+      isActive = false;
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
