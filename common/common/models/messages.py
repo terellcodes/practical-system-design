@@ -95,3 +95,39 @@ class MessageList(BaseModel):
                 ]
             }
         }
+
+
+class UploadRequest(BaseModel):
+    """Request model for requesting an upload URL"""
+    sender_id: str = Field(..., description="ID of the user uploading the file")
+    filename: str = Field(..., min_length=1, max_length=255, description="Original filename")
+    content_type: str = Field(..., description="MIME type of the file (e.g., image/jpeg, video/mp4)")
+    content: str = Field(default="", max_length=5000, description="Optional message content/caption")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "sender_id": "user-123",
+                "filename": "photo.jpg",
+                "content_type": "image/jpeg",
+                "content": "Check out this photo!"
+            }
+        }
+
+
+class UploadRequestResponse(BaseModel):
+    """Response model for upload request - contains pre-signed URL"""
+    message_id: str = Field(..., description="ID of the created message (in PENDING status)")
+    upload_url: str = Field(..., description="Pre-signed URL for direct upload to S3")
+    s3_key: str = Field(..., description="S3 object key where file will be stored")
+    expires_in: int = Field(default=3600, description="Seconds until upload URL expires")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message_id": "msg-abc123",
+                "upload_url": "https://s3.amazonaws.com/chat-media/...",
+                "s3_key": "chats/chat-xyz/attachments/msg-abc123/abc123_photo.jpg",
+                "expires_in": 3600
+            }
+        }

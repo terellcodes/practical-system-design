@@ -13,6 +13,8 @@ from common.models import (
     AddParticipantsRequest,
     ChatWithParticipants,
     MessageResponse,
+    UploadRequest,
+    UploadRequestResponse,
 )
 from src.services.chat_service import ChatService
 
@@ -91,4 +93,26 @@ async def sync_chat(
 ):
     """Fetch undelivered messsage from inbox"""
     return service.get_messages_from_inbox(chat_id, user_id)
+
+
+@router.post("/{chat_id}/messages/upload-request", response_model=UploadRequestResponse, status_code=status.HTTP_201_CREATED)
+async def request_upload(
+    chat_id: str,
+    request: UploadRequest,
+    service: ChatService = Depends(get_chat_service)
+):
+    """
+    Request a pre-signed URL for uploading a file attachment.
+    
+    This endpoint:
+    1. Creates a message in PENDING status
+    2. Returns a pre-signed URL for direct upload to S3
+    
+    The client should then:
+    1. PUT the file to the upload_url with the correct Content-Type
+    2. S3 will trigger an event when upload completes
+    3. The message status will be updated to COMPLETED
+    4. Recipients will then see the message with the attachment
+    """
+    return service.request_upload(chat_id, request)
 

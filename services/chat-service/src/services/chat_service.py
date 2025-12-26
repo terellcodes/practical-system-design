@@ -8,8 +8,10 @@ from typing import List, Optional
 
 from fastapi import HTTPException, status
 
-from common.models import Chat, ChatCreate, ChatParticipant, ChatWithParticipants
+from common.models import Chat, ChatCreate, ChatParticipant, ChatWithParticipants, UploadRequest, UploadRequestResponse
+from common.storage import create_s3_client, generate_presigned_upload_url, generate_s3_object_key
 from src.repositories.dynamodb import DynamoDBRepository
+from src.config import S3_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,16 @@ logger = logging.getLogger(__name__)
 class ChatService:
     """Service layer for chat operations"""
 
-    def __init__(self, repository: Optional[DynamoDBRepository] = None):
+    def __init__(self, repository: Optional[DynamoDBRepository] = None, s3_client=None):
         self.repository = repository or DynamoDBRepository()
+        self._s3_client = s3_client
+    
+    @property
+    def s3_client(self):
+        """Lazy initialization of S3 client"""
+        if self._s3_client is None:
+            self._s3_client = create_s3_client(S3_CONFIG)
+        return self._s3_client
 
     def create_chat(self, chat_data: ChatCreate) -> Chat:
         """Create a new chat."""
@@ -100,4 +110,75 @@ class ChatService:
     
     def get_messages_from_inbox(self, chat_id: str, recipient_id: str) -> dict:
         return self.repository.get_inbox_messages(recipient_id)
+    
+    def request_upload(self, chat_id: str, request: UploadRequest) -> UploadRequestResponse:
+        """
+        Request a pre-signed URL for uploading a file attachment.
+        
+        This creates a message in PENDING status and returns a pre-signed URL
+        for the client to upload directly to S3. Once the upload completes,
+        S3 triggers an event that updates the message status to COMPLETED.
+        
+        Args:
+            chat_id: The chat to attach the file to
+            request: Upload request with filename, content_type, sender_id
+        
+        Returns:
+            UploadRequestResponse with message_id, upload_url, s3_key
+        """
+        # Verify chat exists
+        self.get_chat(chat_id)
+        
+        # Verify sender is a participant
+        if not self.repository.is_participant(chat_id, request.sender_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User {request.sender_id} is not a participant in chat {chat_id}"
+            )
+        
+        # Generate message ID first (we need it for the S3 key)
+        message_id = f"msg-{uuid.uuid4().hex[:12]}"
+        
+        # Generate S3 object key
+        s3_key = generate_s3_object_key(
+            chat_id=chat_id,
+            message_id=message_id,
+            filename=request.filename,
+            content_type=request.content_type
+        )
+        
+        # Generate pre-signed upload URL
+        upload_url = generate_presigned_upload_url(
+            s3_client=self.s3_client,
+            bucket=S3_CONFIG.bucket_name,
+            object_key=s3_key,
+            content_type=request.content_type,
+            expiration=3600  # 1 hour
+        )
+        
+        if not upload_url:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate upload URL"
+            )
+        
+        # Create message in PENDING status (no inbox fanout yet)
+        saved_message = self.repository.save_message(
+            chat_id=chat_id,
+            sender_id=request.sender_id,
+            content=request.content or f"[Attachment: {request.filename}]",
+            recipient_ids=None,  # Don't fanout yet - wait for upload to complete
+            upload_status="PENDING",
+            s3_bucket=S3_CONFIG.bucket_name,
+            s3_object_key=s3_key,
+        )
+        
+        logger.info(f"Created PENDING message {message_id} for upload in chat {chat_id}")
+        
+        return UploadRequestResponse(
+            message_id=saved_message['message_id'],
+            upload_url=upload_url,
+            s3_key=s3_key,
+            expires_in=3600
+        )
 
