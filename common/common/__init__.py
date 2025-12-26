@@ -18,6 +18,8 @@ from common.models import (
     ChatParticipant,
     AddParticipantsRequest,
     ChatWithParticipants,
+    # Messages models
+    Message,
     # Response models
     MessageResponse,
     HealthResponse,
@@ -36,6 +38,8 @@ __all__ = [
     "ChatParticipant",
     "AddParticipantsRequest",
     "ChatWithParticipants",
+    # Message models
+    "Message",
     # Response models
     "MessageResponse",
     "HealthResponse",

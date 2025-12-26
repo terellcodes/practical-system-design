@@ -97,3 +97,7 @@ class ChatService:
                 chats.append(chat)
         
         return chats
+    
+    def get_messages_from_inbox(self, chat_id: str, recipient_id: str) -> dict:
+        return self.repository.get_inbox_messages(recipient_id)
+

@@ -29,6 +29,9 @@ from common.models.messages import (
     Message
 )
 
+from common.models.inbox import (
+    InboxList,
+)
 __all__ = [
     # User models
     "User",
@@ -43,6 +46,8 @@ __all__ = [
     # Message models
     "Message",
     "MessageCreate",
+    # Inbox models
+    "InboxList",
     # Response models
     "MessageResponse",
     "HealthResponse",

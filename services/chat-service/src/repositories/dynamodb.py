@@ -16,7 +16,7 @@ from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
 from common.database import create_dynamodb_resource
-from common.models import Chat, ChatParticipant
+from common.models import Chat, ChatParticipant, InboxList, Message
 from src.config import (
     DYNAMODB_CONFIG,
     CHATS_TABLE,
@@ -218,7 +218,7 @@ class DynamoDBRepository:
     # =========================================================================
     # Messages Operations
     # =========================================================================
-    def save_message(self, chat_id: str, sender_id: str, content: str, recipient_ids: List[str] = None) -> dict:
+    def save_message(self, chat_id: str, sender_id: str, content: str, recipient_ids: Optional[List[str]] = None) -> dict:
         """
         Save a message to DynamoDB and populate inbox for all recipients.
         
@@ -305,8 +305,8 @@ class DynamoDBRepository:
         self, 
         recipient_id: str, 
         limit: int = 50, 
-        last_evaluated_key: dict = None
-    ) -> dict:
+        last_evaluated_key: Optional[dict] = None
+    ) -> InboxList:
         """
         Get messages from a user's inbox (across all chats), sorted by time.
         
@@ -316,7 +316,7 @@ class DynamoDBRepository:
             last_evaluated_key: For pagination
         
         Returns:
-            dict with 'items' and 'last_evaluated_key'
+            InboxList with converted InboxItem models
         """
         try:
             query_params = {
@@ -329,18 +329,95 @@ class DynamoDBRepository:
                 query_params['ExclusiveStartKey'] = last_evaluated_key
             
             response = self.inbox_table.query(**query_params)
+            items = response.get('Items', [])
             
-            return {
-                'items': response.get('Items', []),
-                'last_evaluated_key': response.get('LastEvaluatedKey'),
-                'count': len(response.get('Items', []))
-            }
+            # Sort by createdAt timestamp (newest first)
+            # createdAt is stored as milliseconds (number), so sort numerically
+            items.sort(key=lambda item: float(item.get('createdAt', 0)))
+            
+            message_ids = list(map(lambda item: item.get('messageId'), items))
+            logger.info(f"Inbox messages fetched: {message_ids}")
+
+
+            inbox_messages = self.hydrate_inbox_messages(message_ids)
+
+            items = zip(items, inbox_messages)
+            
+            # Convert DynamoDB items to InboxItem models
+            inbox_message_list = []
+            for message in inbox_messages:
+                
+                # Convert createdAt from Decimal to float before division
+                message_created_at_ms = float(message.get('createdAt', 0))
+                message_created_at_dt = datetime.fromtimestamp(message_created_at_ms / 1000.0)
+                
+                message = Message(
+                    message_id=message.get('messageId', ''),
+                    chat_id=message.get('chatId', ''),
+                    sender_id=message.get('senderId', ''),
+                    content=message.get('content', ''),
+                    created_at=message_created_at_dt
+                )
+                inbox_message_list.append(message)
+            
+            
+            return InboxList(
+                items=inbox_message_list,
+                count=len(inbox_message_list),
+                recipient_id=recipient_id,
+                last_evaluated_key=response.get('LastEvaluatedKey')
+            )
         except ClientError as e:
             logger.error(f"Failed to get inbox for {recipient_id}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to get inbox: {str(e)}"
             )
+        
+    def hydrate_inbox_messages(
+            self,
+            message_ids: List[str]
+    ) -> List[dict]:
+        """
+        Batch fetch full message content for a list of message IDs.
+        
+        Args:
+            message_ids: List of message IDs to fetch
+        
+        Returns:
+            List of full message items (dicts) from Messages table
+        
+        Note: Uses query() with just messageId (partition key) since we don't have createdAt.
+        This is less efficient than batch_get_item but works with just messageId.
+        Each messageId should only have one message, so we take the first result.
+        """
+        
+        if not message_ids:
+            return []
+        
+        logger.info(f"Attempting to hydate inbox messages")
+        all_messages = []
+        
+        # Query each messageId individually (can't batch query by different partition keys)
+        for message_id in message_ids:
+            try:
+                # Query by messageId (partition key) only
+                # This returns all items with that messageId (should be just one)
+                response = self.messages_table.query(
+                    KeyConditionExpression=Key('messageId').eq(message_id),
+                    Limit=1  # We only expect one message per messageId
+                )
+                
+                items = response.get('Items', [])
+                if items:
+                    all_messages.append(items[0])  # Take the first (and should be only) result
+                    
+            except ClientError as e:
+                logger.error(f"Failed to query message {message_id}: {e}")
+                # Continue with other messages instead of failing completely
+                continue
+        logger.info(f"Successfully hydrated inbox messages")
+        return all_messages
 
     # =========================================================================
     # Health Check Operations

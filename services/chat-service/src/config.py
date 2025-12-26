@@ -15,8 +15,8 @@ SERVICE_VERSION = "1.0.0"
 CHATS_TABLE = os.getenv("CHATS_TABLE", "Chats")
 CHAT_PARTICIPANTS_TABLE = os.getenv("CHAT_PARTICIPANTS_TABLE", "ChatParticipants")
 MESSAGES_TABLE = os.getenv("MESSAGES_TABLE", "Messages")
-INBOX_TABLE = os.getenv("INBOX_TABLE", "Inbox")
 PARTICIPANT_INDEX = "participantId-index"
+INBOX_TABLE = os.getenv("INBOX_TABLE", "Inbox")
 
 # DynamoDB configuration (using common utilities)
 DYNAMODB_CONFIG = DynamoDBConfig(

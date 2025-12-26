@@ -343,7 +343,7 @@
             try {
                 const userChatHistory = JSON.parse(storedData);
                 const historyMessages = userChatHistory[chatId] || [];
-                
+
                 if (historyMessages.length === 0) {
                     return; // No messages for this chat
                 }
@@ -366,6 +366,49 @@
                 console.error('Error loading chat history:', e);
                 addMessage(clientId, 'Error loading chat history', 'system');
             }
+        }
+
+        async function syncChatHistory(chatId, clientId, userId) {
+            const syncResponse = await fetch(`http://localhost/api/chats/${chatId}/sync?user_id=${userId}`, {
+                    method: 'GET',
+                });
+                
+            if (!syncResponse.ok) {
+                throw new Error(`Failed to sync chat history: ${syncResponse.status}`);
+            }
+            
+            response = await syncResponse.json();
+
+            const storageKey = `chat-history-${userId}`;
+            let userChatHistory = {};
+
+            try {
+                const stored = localStorage.getItem(storageKey);
+                if (stored) {
+                    userChatHistory = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error('Error reading chat history:', e);
+                return false;
+            }
+            
+            // Initialize chat array if it doesn't exist
+            if (!userChatHistory[chatId]) {
+                userChatHistory[chatId] = [];
+            }
+
+            response.items.forEach(item => {
+                if (!(item.chat_id in userChatHistory)) {
+                    userChatHistory[item.chat_id] = [];
+                }
+                const chatId = item.chat_id;
+                delete item.chat_id;
+                item["type"] = "message";
+                userChatHistory[chatId].push(item);
+            });
+
+            localStorage.setItem(storageKey, JSON.stringify(userChatHistory));
+            return response.items.map(item => item.message_id);           
         }
 
         /**
@@ -630,7 +673,7 @@
             }
         }
 
-        function connect(clientId) {
+        async function connect(clientId) {
             const userId = document.getElementById(`userId-${clientId}`).value;
             const chatId = document.getElementById(`chatId-${clientId}`).value;
             
@@ -645,13 +688,25 @@
             }
 
             // Load chat history from localStorage
+            const messageIdsToAck = await syncChatHistory(chatId, clientId, userId);
             loadChatHistory(chatId, clientId, userId);
+
             
             // Create WebSocket connection (FIXED: removed extra /chat/)
             const ws = new WebSocket(`ws://localhost/api/chats/ws/${chatId}?user_id=${userId}`);
             
             ws.onopen = () => {
                 updateStatus(clientId, true);
+                if (messageIdsToAck.length > 0) {
+                    messageIdsToAck.forEach(messageId => {
+                        const ackMessageData = JSON.stringify({
+                            type: "ack-message-recieved",
+                            message_id: messageId,
+                            recipient_id: userId,
+                        })
+                        ws.send(ackMessageData);
+                    });
+                }
                 addMessage(clientId, `Connected to room: ${chatId}`, 'system');
             };
             

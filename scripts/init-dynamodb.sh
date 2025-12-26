@@ -46,10 +46,10 @@ echo "📦 Creating Messages table..."
 awslocal dynamodb create-table \
     --table-name Messages \
     --attribute-definitions \
-        AttributeName=chatId,AttributeType=S \
+        AttributeName=messageId,AttributeType=S \
         AttributeName=createdAt,AttributeType=N \
     --key-schema \
-        AttributeName=chatId,KeyType=HASH \
+        AttributeName=messageId,KeyType=HASH \
         AttributeName=createdAt,KeyType=RANGE \
     --billing-mode PAY_PER_REQUEST \
     2>/dev/null || echo "  ℹ️  Messages table already exists"

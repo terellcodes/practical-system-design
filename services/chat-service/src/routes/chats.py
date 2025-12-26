@@ -82,3 +82,13 @@ async def remove_participant(
         message=f"Participant {participant_id} removed from chat {chat_id}",
         id=chat_id
     )
+
+@router.get("/{chat_id}/sync")
+async def sync_chat(
+    chat_id: str,
+    user_id: str,
+    service: ChatService = Depends(get_chat_service)
+):
+    """Fetch undelivered messsage from inbox"""
+    return service.get_messages_from_inbox(chat_id, user_id)
+
