@@ -8,7 +8,7 @@ Key Concepts for System Design Interviews:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from boto3.dynamodb.conditions import Key
@@ -64,7 +64,7 @@ class DynamoDBRepository:
     def create_chat(self, chat_id: str, name: str, metadata: dict) -> Chat:
         """Create a new chat in DynamoDB."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             item = {
                 'id': chat_id,
                 'name': name,
@@ -130,7 +130,7 @@ class DynamoDBRepository:
     def add_participant(self, chat_id: str, participant_id: str) -> ChatParticipant:
         """Add a participant to a chat."""
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             item = {
                 'chatId': chat_id,
                 'participantId': participant_id,
@@ -251,7 +251,8 @@ class DynamoDBRepository:
         try:
             import uuid
             
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
             message_id = message_id or f"msg-{uuid.uuid4().hex[:12]}"
             timestamp_ms = int(now.timestamp() * 1000)
             
@@ -450,7 +451,9 @@ class DynamoDBRepository:
                 
                 # Convert createdAt from Decimal to float before division
                 message_created_at_ms = float(msg_item.get('createdAt', 0))
-                message_created_at_dt = datetime.fromtimestamp(message_created_at_ms / 1000.0)
+                message_created_at_dt = datetime.fromtimestamp(
+                    message_created_at_ms / 1000.0, tz=timezone.utc
+                )
                 
                 # Build message with optional attachment fields
                 message_data = {

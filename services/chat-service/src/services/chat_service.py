@@ -34,11 +34,12 @@ class ChatService:
         """Create a new chat."""
         chat_id = f"chat-{uuid.uuid4().hex[:12]}"
         
-        return self.repository.create_chat(
+        chat = self.repository.create_chat(
             chat_id=chat_id,
             name=chat_data.name,
             metadata=chat_data.metadata or {},
         )
+        return chat
 
     def get_chat(self, chat_id: str) -> Chat:
         """Get a chat by ID."""
