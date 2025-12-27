@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node multi-session-chat.js"
+    "start": "node multi-session-chat.js",
+    "alice": "node alice-agent.js",
+    "bob": "node bob-agent.js"
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^3.0.6",
+    "dotenv": "^16.4.7",
     "zod": "^3.24.1"
   }
 }
