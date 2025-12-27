@@ -10,7 +10,9 @@ interface MessageBubbleProps {
 }
 
 function formatTime(dateString: string): string {
-  const date = new Date(dateString);
+  // Backend sends naive UTC (no Z suffix), so append Z to parse as UTC
+  const utcString = dateString.endsWith("Z") ? dateString : dateString + "Z";
+  const date = new Date(utcString);
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
