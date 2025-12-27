@@ -83,9 +83,9 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           </p>
         )}
 
-        {/* Attachment link + status (for non-image or status badge) */}
-        {message.s3_bucket && message.s3_key && (
-          <div className="mt-2 flex items-center gap-2 text-xs">
+        {/* Attachment link (fallback for non-image) */}
+        {message.s3_bucket && message.s3_key && !isImageKey(message.s3_key) && (
+          <div className="mt-2 text-xs">
             <a
               className={cn(
                 "underline",
@@ -95,13 +95,8 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
               target="_blank"
               rel="noreferrer"
             >
-              {isImageKey(message.s3_key) ? "View image" : "Attachment"}
+              Attachment
             </a>
-            {message.upload_status && (
-              <span className="text-[10px] uppercase tracking-wide">
-                {message.upload_status}
-              </span>
-            )}
           </div>
         )}
         
