@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send } from "lucide-react";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Image, Paperclip, Plus, Send, X } from "lucide-react";
 
 interface MessageInputProps {
   onSend: (content: string, file?: File | null) => void;
@@ -13,6 +14,8 @@ interface MessageInputProps {
 export function MessageInput({ onSend, disabled }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -42,17 +45,63 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
       onSubmit={handleSubmit}
       className="p-4 border-t border-border bg-card"
     >
-      <div className="flex items-center gap-2">
-        <Input
-          type="file"
-          accept="image/*,video/*"
-          disabled={disabled}
-          onChange={(e) => {
-            const selected = e.target.files?.[0] ?? null;
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={(e) => {
+          const selected = e.target.files?.[0] ?? null;
+          if (selected) {
             setFile(selected);
-          }}
-          className="max-w-xs text-xs"
-        />
+          }
+          setPickerOpen(false);
+        }}
+      />
+
+      <div className="flex items-center gap-2">
+        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              disabled={disabled}
+              className="shrink-0"
+            >
+              <Plus className="w-5 h-5" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-xs p-4" showCloseButton>
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Add</h3>
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled}
+                >
+                  <Image className="w-4 h-4" />
+                  Photos & videos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled}
+                >
+                  <Paperclip className="w-4 h-4" />
+                  File
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {file && (
           <div className="flex items-center gap-2 text-xs bg-muted px-2 py-1 rounded">
             <span className="truncate max-w-[140px]">{file.name}</span>
@@ -64,10 +113,11 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
               disabled={disabled}
               className="h-6 px-2"
             >
-              Clear
+              <X className="w-3 h-3" />
             </Button>
           </div>
         )}
+
         <Input
           type="text"
           placeholder="Type a message..."
