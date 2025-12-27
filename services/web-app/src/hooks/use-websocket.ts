@@ -68,11 +68,17 @@ interface UseUserWebSocketReturn {
   unsubscribeFromChat: (chatId: string) => void;
 }
 
+// Reconnection config
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_RECONNECT_DELAY = 1000; // 1 second
+
 /**
  * User-centric WebSocket hook.
  * 
  * Creates ONE WebSocket connection per user that receives messages
  * from ALL chats they're part of. Should be used at the app/layout level.
+ * 
+ * Auto-reconnects on unexpected disconnects with exponential backoff.
  */
 export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
@@ -80,6 +86,11 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
   const [isSyncing, setIsSyncing] = useState(false);
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
   const { addMessage, bumpChat } = useChatStore();
+
+  // Reconnection state
+  const reconnectAttempts = useRef(0);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
+  const shouldReconnect = useRef(true);
 
   const syncInbox = useCallback(async () => {
     if (!userId) return;
@@ -206,57 +217,80 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
     [addMessage, bumpChat]
   );
 
-  // Connect to WebSocket
-  useEffect(() => {
-    if (!userId) {
-      return;
-    }
+  // Connect function - can be called for initial connection or reconnection
+  const connect = useCallback(() => {
+    if (!userId) return;
 
-    // Track if effect is still active (handles React Strict Mode)
-    let isActive = true;
+    // Clean up any existing connection
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     const url = getWebSocketUrl(userId);
     console.log(`Connecting to WebSocket: ${url}`);
-    
+
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (!isActive) return;
       console.log("WebSocket connection opened");
       setIsConnected(true);
-      // Sync inbox on (re)connect
+      reconnectAttempts.current = 0; // Reset on successful connection
       syncInbox();
     };
 
-    ws.onmessage = (event) => {
-      if (!isActive) return;
-      handleMessage(event);
-    };
+    ws.onmessage = handleMessage;
 
     ws.onerror = () => {
-      // WebSocket error events don't contain useful info
-      // The close event will provide the actual error details
-      if (isActive) {
-        console.warn("WebSocket connection error (details in close event)");
-      }
+      console.warn("WebSocket connection error (details in close event)");
     };
 
     ws.onclose = (event) => {
-      if (!isActive) return;
-      console.log(`WebSocket closed: ${event.code} ${event.reason}`);
+      console.log(`WebSocket closed: code=${event.code} wasClean=${event.wasClean}`);
       setIsConnected(false);
       setSubscribedChats([]);
-    };
 
-    return () => {
-      isActive = false;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      // Auto-reconnect on unexpected disconnect
+      if (
+        !event.wasClean &&
+        shouldReconnect.current &&
+        reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS
+      ) {
+        const delay = BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttempts.current);
+        console.log(
+          `Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${MAX_RECONNECT_ATTEMPTS})`
+        );
+
+        reconnectTimeout.current = setTimeout(() => {
+          reconnectAttempts.current++;
+          connect();
+        }, delay);
+      } else if (reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error("Max reconnection attempts reached. Giving up.");
       }
-      wsRef.current = null;
     };
   }, [userId, handleMessage, syncInbox]);
+
+  // Initial connection and cleanup
+  useEffect(() => {
+    if (!userId) return;
+
+    shouldReconnect.current = true;
+    connect();
+
+    return () => {
+      shouldReconnect.current = false; // Prevent reconnect on unmount
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [userId, connect]);
 
   // Send a message to a specific chat
   const sendMessage = useCallback(
