@@ -10,7 +10,7 @@ Consumes from 'upload-completed' topic and:
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from kafka import KafkaConsumer
@@ -187,11 +187,7 @@ class UploadCompletionConsumer:
             
             # 5. Publish to Redis for WebSocket broadcast
             if ws_module.manager:
-                created_at_iso = (
-                    datetime.fromtimestamp(created_at / 1000, tz=timezone.utc)
-                    .isoformat()
-                    .replace("+00:00", "Z")
-                )
+                created_at_iso = datetime.utcfromtimestamp(created_at / 1000).isoformat()
 
                 # Build the WebSocket message
                 ws_message = json.dumps({
