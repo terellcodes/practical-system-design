@@ -61,7 +61,7 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         
         {/* Attachment preview (images) */}
         {message.s3_bucket && message.s3_key && isImageKey(message.s3_key) && (
-          <div className="mt-2 overflow-hidden rounded-xl border border-border/60 bg-black/5">
+          <div className="mt-2 overflow-hidden rounded-xl border border-border/30 bg-black/5">
             <a
               href={buildS3PublicUrl(message.s3_bucket, message.s3_key)}
               target="_blank"
