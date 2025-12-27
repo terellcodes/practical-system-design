@@ -15,6 +15,20 @@ function formatTime(dateString: string): string {
 }
 
 export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+  const isImageKey = (key: string) => {
+    const lower = key.toLowerCase();
+    return (
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".gif") ||
+      lower.endsWith(".webp") ||
+      lower.endsWith(".heic") ||
+      lower.endsWith(".heif") ||
+      lower.endsWith(".avif")
+    );
+  };
+
   // System messages (user joined/left)
   if (message.type === "system") {
     return (
@@ -45,27 +59,46 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
           </p>
         )}
         
-        {/* Message content */}
-        <p className="text-sm whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {/* Attachment preview (images) */}
+        {message.s3_bucket && message.s3_key && isImageKey(message.s3_key) && (
+          <div className="mt-2 overflow-hidden rounded-xl border border-border/60 bg-black/5">
+            <a
+              href={buildS3PublicUrl(message.s3_bucket, message.s3_key)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src={buildS3PublicUrl(message.s3_bucket, message.s3_key)}
+                alt="Attachment"
+                className="w-full h-auto object-cover max-h-[360px] bg-muted"
+              />
+            </a>
+          </div>
+        )}
 
-        {/* Attachment (link) */}
+        {/* Message content */}
+        {message.content && (
+          <p className="text-sm whitespace-pre-wrap break-words mt-2">
+            {message.content}
+          </p>
+        )}
+
+        {/* Attachment link + status (for non-image or status badge) */}
         {message.s3_bucket && message.s3_key && (
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-2 text-xs">
             <a
               className={cn(
-                "text-xs underline",
+                "underline",
                 isOwn ? "text-primary-foreground" : "text-primary"
               )}
               href={buildS3PublicUrl(message.s3_bucket, message.s3_key)}
               target="_blank"
               rel="noreferrer"
             >
-              Attachment
+              {isImageKey(message.s3_key) ? "View image" : "Attachment"}
             </a>
             {message.upload_status && (
-              <span className="ml-2 text-[10px] uppercase tracking-wide">
+              <span className="text-[10px] uppercase tracking-wide">
                 {message.upload_status}
               </span>
             )}
