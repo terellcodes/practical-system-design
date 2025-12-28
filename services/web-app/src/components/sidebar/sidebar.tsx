@@ -20,7 +20,7 @@ export function Sidebar() {
         initial={false}
         animate={{ width: isHovered ? 180 : 40 }}
         transition={{ duration: 0.2, ease: 'easeInOut' }}
-        className="fixed left-0 top-0 h-full bg-[#111b21] border-r border-[#222e35] flex flex-col z-40"
+        className="fixed left-0 top-0 h-full bg-[#111b21] border-r border-[#222e35] flex flex-col z-20"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
@@ -28,15 +28,10 @@ export function Sidebar() {
         {/* Top spacing when collapsed, user info when expanded */}
         {isHovered ? (
           userId && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="px-2 py-2 border-b border-[#222e35]"
-            >
+            <div className="px-2 py-2 border-b border-[#222e35] h-12 flex flex-col justify-center">
               <p className="text-[10px] text-muted-foreground uppercase">User</p>
               <p className="text-sidebar-foreground text-xs font-medium truncate">{userId}</p>
-            </motion.div>
+            </div>
           )
         ) : (
           <div className="h-12 border-b border-[#222e35]" />
