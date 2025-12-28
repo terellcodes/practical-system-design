@@ -39,6 +39,18 @@ class ConnectionManager:
             "alice": {"chat-abc", "chat-def", "chat-xyz"},
             "bob": {"chat-abc", "chat-ghi"},
         }
+
+        // message mailbox for each user
+        user_pubsubs = {
+            "alice": <PubSub listening to ["chat:chat-abc","chat:chat-def", "chat:chat-xyz"]>,
+            "bob": <PubSub listening to ["chat:chat-abc","chat:chat-ghi"]>,
+        }
+
+        // background tasks listening for messages on each user's pubsub and routing to the user's WebSocket connection
+        user_tasks = {
+            "alice": <Task listening for messages on alice's pubsub>,
+            "bob": <Task listening for messages on bob's pubsub>,
+        }
     """
     
     def __init__(self, redis_url: str):
