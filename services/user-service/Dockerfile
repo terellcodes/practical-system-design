@@ -20,6 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy service code
 COPY services/user-service/src/ ./src/
 
+# Copy alembic configuration and migrations
+COPY services/user-service/alembic.ini .
+COPY services/user-service/alembic/ ./alembic/
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

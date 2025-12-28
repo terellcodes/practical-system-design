@@ -13,7 +13,7 @@ from typing import Optional, List
 from fastapi import HTTPException, status
 
 from common.models import User, UserCreate, UserUpdate
-from src.repositories.postgres import PostgresRepository
+from src.repositories.sqlmodel_postgres import SQLModelPostgresRepository
 from src.repositories.cache import CacheRepository
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,10 @@ class UserService:
     
     def __init__(
         self,
-        postgres_repo: Optional[PostgresRepository] = None,
+        postgres_repo: Optional[SQLModelPostgresRepository] = None,
         cache_repo: Optional[CacheRepository] = None
     ):
-        self.postgres = postgres_repo or PostgresRepository()
+        self.postgres = postgres_repo or SQLModelPostgresRepository()
         self.cache = cache_repo or CacheRepository()
     
     async def create(self, user_data: UserCreate) -> User:
@@ -37,6 +37,7 @@ class UserService:
         user = await self.postgres.create(
             name=user_data.name,
             email=user_data.email,
+            username=user_data.name.lower().replace(" ", ""),  # Generate username from name
         )
         
         await self.cache.set(user)
@@ -107,3 +108,46 @@ class UserService:
     async def list_all(self, limit: int = 100, offset: int = 0) -> List[User]:
         """List all users (bypasses cache)."""
         return await self.postgres.list_all(limit=limit, offset=offset)
+    
+    async def get_by_username(self, username: str) -> User:
+        """Get a user by username."""
+        logger.info(f"Fetching user by username: {username}")
+        
+        user = await self.postgres.get_by_username(username)
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User with username '{username}' not found"
+            )
+        
+        # Cache by ID for future lookups
+        await self.cache.set(user)
+        
+        return user
+    
+    async def get_or_create_by_username(self, username: str) -> User:
+        """Get user by username, or create if doesn't exist (for simple login)."""
+        logger.info(f"Getting or creating user: {username}")
+        
+        try:
+            # Try to get existing user
+            return await self.get_by_username(username)
+        except HTTPException as e:
+            if e.status_code == status.HTTP_404_NOT_FOUND:
+                # User doesn't exist, create new one
+                logger.info(f"User '{username}' not found, creating new user")
+                
+                # Create user directly with username
+                user = await self.postgres.create(
+                    name=username,  # Use username as display name
+                    email=f"{username}@example.com",  # Generate a dummy email
+                    username=username
+                )
+                
+                await self.cache.set(user)
+                logger.info(f"User {user.id} created successfully")
+                return user
+            else:
+                # Re-raise other errors
+                raise

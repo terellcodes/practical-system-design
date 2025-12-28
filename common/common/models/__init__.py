@@ -9,6 +9,7 @@ from common.models.user import (
     User,
     UserCreate,
     UserUpdate,
+    UserLoginRequest,
 )
 
 from common.models.chat import (
@@ -40,6 +41,7 @@ __all__ = [
     "User",
     "UserCreate",
     "UserUpdate",
+    "UserLoginRequest",
     # Chat models
     "Chat",
     "ChatCreate",

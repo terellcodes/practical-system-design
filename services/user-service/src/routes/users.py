@@ -6,7 +6,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, status, Query
 
-from common.models import User, UserCreate, UserUpdate, MessageResponse
+from common.models import User, UserCreate, UserUpdate, UserLoginRequest, MessageResponse
 from src.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -66,3 +66,24 @@ async def delete_user(
         message=f"User {user_id} deleted successfully",
         id=str(user_id)
     )
+
+
+@router.post("/login", response_model=User, status_code=status.HTTP_200_OK)
+async def login_user(
+    login_request: UserLoginRequest,
+    service: UserService = Depends(get_user_service)
+):
+    """
+    Simple login - get user by username, or create if doesn't exist.
+    For learning purposes only - no real authentication.
+    """
+    return await service.get_or_create_by_username(login_request.username)
+
+
+@router.get("/username/{username}", response_model=User)
+async def get_user_by_username(
+    username: str,
+    service: UserService = Depends(get_user_service)
+):
+    """Get a user by username."""
+    return await service.get_by_username(username)

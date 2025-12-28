@@ -1,47 +1,42 @@
 """
 Database connection management for User Service
 
-Uses shared utilities from common package.
+Uses SQLModel with SQLAlchemy async engine.
 """
 
 import logging
 from typing import Optional
 
-import asyncpg
 import redis.asyncio as redis
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlmodel import SQLModel
 
-from common.database import create_postgres_pool, create_redis_client
+from common.database import create_redis_client
 from src.config import POSTGRES_CONFIG, REDIS_CONFIG
+from common.models import User
 
 logger = logging.getLogger(__name__)
 
 # Connection pools (initialized on startup)
-_pg_pool: Optional[asyncpg.Pool] = None
+_async_engine: Optional[AsyncEngine] = None
 _redis_client: Optional[redis.Redis] = None
 
 
-async def init_postgres() -> asyncpg.Pool:
-    """Initialize PostgreSQL connection pool"""
-    global _pg_pool
+async def init_postgres() -> AsyncEngine:
+    """Initialize PostgreSQL async engine"""
+    global _async_engine
     
-    _pg_pool = await create_postgres_pool(POSTGRES_CONFIG)
+    # Create SQLAlchemy async engine
+    database_url = f"postgresql+asyncpg://{POSTGRES_CONFIG.user}:{POSTGRES_CONFIG.password}@{POSTGRES_CONFIG.host}:{POSTGRES_CONFIG.port}/{POSTGRES_CONFIG.database}"
     
-    # Create users table if it doesn't exist
-    async with _pg_pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                email VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            )
-        """)
-        await conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
-        """)
+    _async_engine = create_async_engine(database_url, echo=False)
     
-    logger.info("PostgreSQL initialized with users table")
-    return _pg_pool
+    # Create all tables (SQLModel will handle this)
+    async with _async_engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    
+    logger.info("PostgreSQL initialized with SQLModel tables")
+    return _async_engine
 
 
 async def init_redis() -> redis.Redis:
@@ -52,12 +47,12 @@ async def init_redis() -> redis.Redis:
 
 
 async def close_postgres():
-    """Close PostgreSQL connection pool"""
-    global _pg_pool
-    if _pg_pool:
-        await _pg_pool.close()
-        _pg_pool = None
-        logger.info("PostgreSQL connection pool closed")
+    """Close PostgreSQL async engine"""
+    global _async_engine
+    if _async_engine:
+        await _async_engine.dispose()
+        _async_engine = None
+        logger.info("PostgreSQL async engine closed")
 
 
 async def close_redis():
@@ -69,11 +64,11 @@ async def close_redis():
         logger.info("Redis connection closed")
 
 
-def get_pg_pool() -> asyncpg.Pool:
-    """Get the PostgreSQL connection pool"""
-    if _pg_pool is None:
-        raise RuntimeError("PostgreSQL pool not initialized")
-    return _pg_pool
+def get_async_engine() -> AsyncEngine:
+    """Get the PostgreSQL async engine"""
+    if _async_engine is None:
+        raise RuntimeError("PostgreSQL async engine not initialized")
+    return _async_engine
 
 
 def get_redis_client() -> redis.Redis:

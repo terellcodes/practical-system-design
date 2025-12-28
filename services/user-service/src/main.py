@@ -48,17 +48,17 @@ app = FastAPI(
 )
 
 # CORS middleware - allows browser requests from any origin
-# In production, replace "*" with specific allowed origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins (use specific domains in production)
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, PUT, DELETE, OPTIONS, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_origins=["*"],
+    allow_credentials=True, 
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
 )
 
 app.include_router(health_router)
-app.include_router(users_router)
+app.include_router(users_router, prefix="/api")
 
 
 if __name__ == "__main__":
