@@ -25,17 +25,15 @@ export function Sidebar() {
         onMouseLeave={() => setIsHovered(false)}
       >
 
-        {/* Top spacing when collapsed, user info when expanded */}
-        {isHovered ? (
-          userId && (
-            <div className="px-2 py-2 border-b border-[#222e35] h-12 flex flex-col justify-center">
+        {/* Top spacing - maintains consistent height */}
+        <div className="h-12 border-b border-[#222e35] flex items-center">
+          {isHovered && userId && (
+            <div className="px-2 flex flex-col justify-center">
               <p className="text-[10px] text-muted-foreground uppercase">User</p>
               <p className="text-sidebar-foreground text-xs font-medium truncate">{userId}</p>
             </div>
-          )
-        ) : (
-          <div className="h-12 border-b border-[#222e35]" />
-        )}
+          )}
+        </div>
 
         {/* Navigation Items */}
         <nav className="flex-1 py-2 px-0 space-y-0.5">

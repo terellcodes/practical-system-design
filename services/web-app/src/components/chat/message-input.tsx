@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Image, Paperclip, Plus, Send, X } from "lucide-react";
 
 interface MessageInputProps {
@@ -75,7 +75,7 @@ export function MessageInput({ onSend, disabled }: MessageInputProps) {
           </DialogTrigger>
           <DialogContent className="max-w-xs p-4" showCloseButton>
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Add</h3>
+              <DialogTitle className="text-sm font-semibold">Add</DialogTitle>
               <div className="flex flex-col gap-2">
                 <Button
                   type="button"
