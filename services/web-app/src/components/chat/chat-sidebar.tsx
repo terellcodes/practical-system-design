@@ -41,12 +41,6 @@ export function ChatSidebar({ onCreateChat }: ChatSidebarProps) {
             <LogOut className="w-5 h-5" />
           </Button>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>Logged in as</span>
-          <code className="px-2 py-0.5 rounded bg-primary/10 text-primary font-mono">
-            {userId}
-          </code>
-        </div>
       </div>
 
       {/* Create Chat Button */}
