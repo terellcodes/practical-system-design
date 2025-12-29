@@ -115,11 +115,16 @@ class ConnectionManager:
         pubsub = self.redis_client.pubsub()
         self.user_pubsubs[user_id] = pubsub
         
+        # Subscribe to user's personal channel (for direct notifications like invites)
+        user_channel = f"user:{user_id}"
+        await pubsub.subscribe(user_channel)
+        logger.info(f"User {user_id} subscribed to personal channel: {user_channel}")
+        
         # Subscribe to all chat channels
         if chat_ids:
             channels = [f"chat:{chat_id}" for chat_id in chat_ids]
             await pubsub.subscribe(*channels)
-            logger.info(f"User {user_id} subscribed to {len(chat_ids)} channels: {channels}")
+            logger.info(f"User {user_id} subscribed to {len(chat_ids)} chat channels: {channels}")
         
         # Start background task to listen for messages
         task = asyncio.create_task(self._listen_for_user(user_id, pubsub))

@@ -10,9 +10,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
+from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION, REDIS_CONFIG
 from src.database import init_postgres, init_redis, close_postgres, close_redis
 from src.routes import users_router, health_router, invites_router, contacts_router
+from src.services.redis_publisher import RedisPublisher, publisher
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    import src.services.redis_publisher as redis_pub
+    
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
     logger.info("=" * 60)
@@ -28,6 +31,11 @@ async def lifespan(app: FastAPI):
     try:
         await init_postgres()
         await init_redis()
+        
+        # Initialize Redis publisher for real-time events
+        redis_pub.publisher = RedisPublisher(REDIS_CONFIG)
+        await redis_pub.publisher.initialize()
+        
         logger.info("All connections initialized")
     except Exception as e:
         logger.error(f"Failed to initialize: {e}")
@@ -36,6 +44,8 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("Shutting down...")
+    if redis_pub.publisher:
+        await redis_pub.publisher.close()
     await close_redis()
     await close_postgres()
 

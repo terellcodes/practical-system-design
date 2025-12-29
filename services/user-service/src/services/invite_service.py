@@ -5,6 +5,7 @@ Handles:
 - Sending invites by connect_pin
 - Validating invite constraints (self-invite, existing contacts)
 - Accepting/rejecting invites
+- Publishing real-time events via Redis pub/sub
 """
 
 import logging
@@ -16,6 +17,7 @@ from common.models import Invite, InviteCreate, InviteUpdate, InviteStatus, Invi
 from src.repositories.invite_repository import InviteRepository
 from src.repositories.contact_repository import ContactRepository
 from src.repositories.sqlmodel_postgres import SQLModelPostgresRepository
+from src.services.redis_publisher import get_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class InviteService:
         
         logger.info(f"Invite {invite.id} created successfully")
         
-        return InviteWithUsers(
+        invite_with_users = InviteWithUsers(
             id=invite.id,
             invitor_id=invite.invitor_id,
             invitor_username=invitor.username,
@@ -98,6 +100,26 @@ class InviteService:
             created_at=invite.created_at,
             updated_at=invite.updated_at
         )
+        
+        # 7. Publish real-time notification to invitee
+        try:
+            publisher = get_publisher()
+            await publisher.publish_to_user(
+                user_id=invitee.username,  # Use username as user_id for WebSocket
+                event_type="invite_received",
+                data={
+                    "invite_id": invite.id,
+                    "invitor_id": invite.invitor_id,
+                    "invitor_username": invitor.username,
+                    "invitor_name": invitor.name,
+                    "created_at": invite.created_at.isoformat()
+                }
+            )
+        except Exception as e:
+            # Don't fail the request if notification fails
+            logger.warning(f"Failed to publish invite notification: {e}")
+        
+        return invite_with_users
     
     async def get_pending_invites(self, user_id: int) -> List[InviteWithUsers]:
         """Get all pending invites for a user (invites they received)."""
@@ -166,6 +188,30 @@ class InviteService:
             logger.info(f"Contact created between users {invite.invitor_id} and {invite.invitee_id}")
         
         logger.info(f"Invite {invite_id} {new_status}")
+        
+        # 7. Publish notification to invitor about the response
+        try:
+            # Get user details for the notification
+            invitor = await self.user_repo.get_by_id(invite.invitor_id)
+            invitee = await self.user_repo.get_by_id(invite.invitee_id)
+            
+            publisher = get_publisher()
+            event_type = "invite_accepted" if update_data.status == InviteStatus.ACCEPTED else "invite_rejected"
+            
+            await publisher.publish_to_user(
+                user_id=invitor.username,  # Use username as user_id for WebSocket
+                event_type=event_type,
+                data={
+                    "invite_id": invite.id,
+                    "invitee_id": invite.invitee_id,
+                    "invitee_username": invitee.username,
+                    "invitee_name": invitee.name,
+                    "status": new_status
+                }
+            )
+        except Exception as e:
+            # Don't fail the request if notification fails
+            logger.warning(f"Failed to publish invite response notification: {e}")
         
         return updated_invite
     
