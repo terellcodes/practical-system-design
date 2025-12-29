@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from common.models import Chat, ChatCreate, ChatParticipant, ChatWithParticipants, UploadRequest, UploadRequestResponse
 from common.storage import create_s3_client, generate_presigned_upload_url, generate_s3_object_key
 from src.repositories.dynamodb import DynamoDBRepository
+from src.services.user_service_client import check_contacts_batch
 from src.config import S3_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,39 @@ class ChatService:
         self.repository.delete_chat(chat_id)
         return True
 
-    def add_participants(self, chat_id: str, participant_ids: List[str]) -> List[ChatParticipant]:
-        """Add participants to a chat."""
+    async def add_participants(
+        self, 
+        chat_id: str, 
+        participant_ids: List[str],
+        current_user: str
+    ) -> List[ChatParticipant]:
+        """
+        Add participants to a chat.
+        
+        Verifies that all participants are contacts of the current user.
+        
+        Args:
+            chat_id: The chat to add participants to
+            participant_ids: List of usernames to add
+            current_user: Username of the user adding participants
+            
+        Raises:
+            HTTPException 400 if any participant is not a contact
+        """
         self.get_chat(chat_id)  # Verify exists
         
+        # Check contact relationships
+        contact_status = await check_contacts_batch(current_user, participant_ids)
+        
+        non_contacts = [pid for pid, is_contact in contact_status.items() if not is_contact]
+        
+        if non_contacts:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot add non-contacts to chat: {', '.join(non_contacts)}"
+            )
+        
+        # All verified as contacts, proceed with adding
         added = []
         for pid in participant_ids:
             if not self.repository.is_participant(chat_id, pid):

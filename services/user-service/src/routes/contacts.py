@@ -50,3 +50,24 @@ async def check_contacts(
         user_id_2=user_id_2
     )
 
+
+@router.get("/check-by-username")
+async def check_contacts_by_username(
+    username_1: str = Query(..., description="First username"),
+    username_2: str = Query(..., description="Second username"),
+    repo: ContactRepository = Depends(get_contact_repository)
+):
+    """
+    Check if two users are contacts by username.
+    
+    Used by chat-service which identifies users by username.
+    Returns 404 if either user not found.
+    """
+    are_contacts = await repo.are_contacts_by_username(username_1, username_2)
+    
+    return {
+        "are_contacts": are_contacts,
+        "username_1": username_1,
+        "username_2": username_2
+    }
+

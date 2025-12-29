@@ -4,7 +4,7 @@ Chat CRUD API endpoints
 
 from typing import List
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Header, HTTPException
 
 from common.models import (
     Chat,
@@ -75,10 +75,16 @@ async def get_chats_for_participant(
 async def add_participants(
     chat_id: str,
     request: AddParticipantsRequest,
+    x_user_id: str = Header(..., description="Username of the user adding participants"),
     service: ChatService = Depends(get_chat_service)
 ):
-    """Add participants to a chat."""
-    return service.add_participants(chat_id, request.participant_ids)
+    """
+    Add participants to a chat.
+    
+    Requires X-User-Id header to verify contact relationships.
+    Only contacts can be added to chats.
+    """
+    return await service.add_participants(chat_id, request.participant_ids, x_user_id)
 
 
 @router.delete("/{chat_id}/participants/{participant_id}", response_model=MessageResponse)

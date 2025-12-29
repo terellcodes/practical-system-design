@@ -134,6 +134,54 @@ class ContactRepository:
                 detail=f"Failed to check contact status: {str(e)}"
             )
     
+    async def are_contacts_by_username(self, username_1: str, username_2: str) -> bool:
+        """
+        Check if two users are contacts by their usernames.
+        
+        Looks up user IDs from usernames, then checks contact status.
+        Returns False if either user not found (instead of raising 404).
+        """
+        engine = get_async_engine()
+        
+        try:
+            async with AsyncSession(engine) as session:
+                # Look up both users by username
+                result_1 = await session.execute(
+                    select(User).where(User.username == username_1)
+                )
+                user_1 = result_1.scalars().first()
+                
+                result_2 = await session.execute(
+                    select(User).where(User.username == username_2)
+                )
+                user_2 = result_2.scalars().first()
+                
+                # If either user doesn't exist, they can't be contacts
+                if not user_1 or not user_2:
+                    logger.warning(f"User not found: {username_1 if not user_1 else username_2}")
+                    return False
+                
+                # Check if they are contacts using the existing logic
+                contact_one_id = min(user_1.id, user_2.id)
+                contact_two_id = max(user_1.id, user_2.id)
+                
+                statement = (
+                    select(Contact)
+                    .where(Contact.contact_one_id == contact_one_id)
+                    .where(Contact.contact_two_id == contact_two_id)
+                )
+                result = await session.execute(statement)
+                contact = result.scalars().first()
+                
+                return contact is not None
+                
+        except Exception as e:
+            logger.error(f"Failed to check contact status by username: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to check contact status: {str(e)}"
+            )
+    
     async def delete(self, user_id_1: int, user_id_2: int) -> bool:
         """Delete a contact between two users."""
         engine = get_async_engine()
