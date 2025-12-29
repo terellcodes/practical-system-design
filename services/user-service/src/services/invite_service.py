@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 
 from common.models import Invite, InviteCreate, InviteUpdate, InviteStatus, InviteWithUsers
 from src.repositories.invite_repository import InviteRepository
+from src.repositories.contact_repository import ContactRepository
 from src.repositories.sqlmodel_postgres import SQLModelPostgresRepository
 
 logger = logging.getLogger(__name__)
@@ -26,9 +27,11 @@ class InviteService:
         self,
         invite_repo: Optional[InviteRepository] = None,
         user_repo: Optional[SQLModelPostgresRepository] = None,
+        contact_repo: Optional[ContactRepository] = None,
     ):
         self.invite_repo = invite_repo or InviteRepository()
         self.user_repo = user_repo or SQLModelPostgresRepository()
+        self.contact_repo = contact_repo or ContactRepository()
     
     async def send_invite(self, invitor_id: int, invite_data: InviteCreate) -> InviteWithUsers:
         """
@@ -60,13 +63,12 @@ class InviteService:
                 detail="Cannot send an invite to yourself"
             )
         
-        # 3. Check if already contacts (Phase 2 - will add this check)
-        # For now, we'll stub this out
-        # if await self._are_contacts(invitor_id, invitee_id):
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail="You are already contacts with this user"
-        #     )
+        # 3. Check if already contacts
+        if await self.contact_repo.are_contacts(invitor_id, invitee_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You are already contacts with this user"
+            )
         
         # 4. Check for existing pending invite
         existing = await self.invite_repo.check_existing_invite(invitor_id, invitee_id)
@@ -158,9 +160,10 @@ class InviteService:
         new_status = update_data.status.value if isinstance(update_data.status, InviteStatus) else update_data.status
         updated_invite = await self.invite_repo.update_status(invite_id, new_status)
         
-        # 6. If accepted, create contact (Phase 2)
-        # if update_data.status == InviteStatus.ACCEPTED:
-        #     await self._create_contact(invite.invitor_id, invite.invitee_id)
+        # 6. If accepted, create contact
+        if update_data.status == InviteStatus.ACCEPTED:
+            await self.contact_repo.create(invite.invitor_id, invite.invitee_id)
+            logger.info(f"Contact created between users {invite.invitor_id} and {invite.invitee_id}")
         
         logger.info(f"Invite {invite_id} {new_status}")
         
@@ -180,13 +183,4 @@ class InviteService:
             result = await session.execute(statement)
             return result.scalars().first()
     
-    # Phase 2: Contact check
-    # async def _are_contacts(self, user_id_1: int, user_id_2: int) -> bool:
-    #     """Check if two users are already contacts."""
-    #     pass
-    
-    # Phase 2: Create contact on accept
-    # async def _create_contact(self, user_id_1: int, user_id_2: int):
-    #     """Create a contact record when invite is accepted."""
-    #     pass
 

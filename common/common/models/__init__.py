@@ -44,6 +44,12 @@ from common.models.invite import (
     InviteStatus,
     InviteWithUsers,
 )
+
+from common.models.contact import (
+    Contact,
+    ContactWithUser,
+    ContactCheckResponse,
+)
 __all__ = [
     # User models
     "User",
@@ -70,6 +76,10 @@ __all__ = [
     "InviteUpdate",
     "InviteStatus",
     "InviteWithUsers",
+    # Contact models
+    "Contact",
+    "ContactWithUser",
+    "ContactCheckResponse",
     # Response models
     "MessageResponse",
     "HealthResponse",
