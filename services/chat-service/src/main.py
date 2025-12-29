@@ -37,17 +37,17 @@ app.add_middleware(
 
 # REST API routes
 app.include_router(health_router)
-app.include_router(chats_router)
+app.include_router(chats_router, prefix="/api")
 
-# WebSocket routes (mounted under /chats for NGINX routing)
-app.include_router(websocket_router, prefix="/chats")
+# WebSocket routes (mounted under /api/chats for NGINX routing)
+app.include_router(websocket_router, prefix="/api/chats")
 
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
-    logger.info("WebSocket endpoint: /chats/ws?user_id={{user_id}} (user-centric, single connection)")
+    logger.info("WebSocket endpoint: /api/chats/ws?user_id={{user_id}} (user-centric, single connection)")
     
     # Initialize shared DynamoDB resource (reused across all requests)
     dynamodb_resource = create_dynamodb_resource(DYNAMODB_CONFIG)
