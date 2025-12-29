@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useChatStore } from "@/store/chat-store";
+import { useInviteStore } from "@/store/invite-store";
 import { getWebSocketUrl } from "@/lib/api";
 import { chatApi } from "@/lib/api";
-import type { Message } from "@/types";
+import type { Message, InviteWithUsers } from "@/types";
 
 /**
  * WebSocket message types from server
@@ -51,13 +52,50 @@ interface WSPongMessage {
   timestamp: string;
 }
 
+// Invite event types (from user-service via Redis pub/sub)
+interface WSInviteReceivedMessage {
+  type: "invite_received";
+  data: {
+    invite_id: number;
+    invitor_id: number;
+    invitor_username: string;
+    invitor_name: string;
+    created_at: string;
+  };
+}
+
+interface WSInviteAcceptedMessage {
+  type: "invite_accepted";
+  data: {
+    invite_id: number;
+    invitee_id: number;
+    invitee_username: string;
+    invitee_name: string;
+    status: string;
+  };
+}
+
+interface WSInviteRejectedMessage {
+  type: "invite_rejected";
+  data: {
+    invite_id: number;
+    invitee_id: number;
+    invitee_username: string;
+    invitee_name: string;
+    status: string;
+  };
+}
+
 type WSMessage = 
   | WSConnectedMessage 
   | WSChatMessage 
   | WSSystemMessage 
   | WSSubscribedMessage 
   | WSErrorMessage 
-  | WSPongMessage;
+  | WSPongMessage
+  | WSInviteReceivedMessage
+  | WSInviteAcceptedMessage
+  | WSInviteRejectedMessage;
 
 interface UseUserWebSocketReturn {
   isConnected: boolean;
@@ -86,6 +124,7 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
   const [isSyncing, setIsSyncing] = useState(false);
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
   const { addMessage, bumpChat } = useChatStore();
+  const { addPendingInvite, updateSentInviteStatus } = useInviteStore();
 
   // Reconnection state
   const reconnectAttempts = useRef(0);
@@ -209,12 +248,46 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
           case "pong":
             // Heartbeat response, can be used for connection health
             break;
+
+          case "invite_received": {
+            // Someone sent us an invite
+            console.log("Invite received:", data.data);
+            const inviteData = data.data;
+            const invite: InviteWithUsers = {
+              id: inviteData.invite_id,
+              invitor_id: inviteData.invitor_id,
+              invitor_username: inviteData.invitor_username,
+              invitor_name: inviteData.invitor_name,
+              invitee_id: 0, // We are the invitee
+              invitee_username: userId || "",
+              invitee_name: "",
+              status: "pending",
+              created_at: inviteData.created_at,
+              updated_at: inviteData.created_at,
+            };
+            addPendingInvite(invite);
+            break;
+          }
+
+          case "invite_accepted": {
+            // Someone accepted our invite
+            console.log("Invite accepted:", data.data);
+            updateSentInviteStatus(data.data.invite_id, "accepted");
+            break;
+          }
+
+          case "invite_rejected": {
+            // Someone rejected our invite
+            console.log("Invite rejected:", data.data);
+            updateSentInviteStatus(data.data.invite_id, "rejected");
+            break;
+          }
         }
       } catch (error) {
         console.error("Failed to parse WebSocket message:", error);
       }
     },
-    [addMessage, bumpChat]
+    [userId, addMessage, bumpChat, addPendingInvite, updateSentInviteStatus]
   );
 
   // Connect function - can be called for initial connection or reconnection

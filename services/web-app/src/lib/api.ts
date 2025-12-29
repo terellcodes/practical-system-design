@@ -126,6 +126,115 @@ export const chatApi = {
   },
 };
 
+// Invite API
+export const inviteApi = {
+  // Send an invite to a user by their connect PIN
+  sendInvite: async (userId: number, connectPin: string) => {
+    const response = await fetch(`${API_BASE}/invites`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": userId.toString(),
+      },
+      body: JSON.stringify({ connect_pin: connectPin }),
+    });
+    return handleResponse<{
+      id: number;
+      invitor_id: number;
+      invitor_username: string;
+      invitor_name: string;
+      invitee_id: number;
+      invitee_username: string;
+      invitee_name: string;
+      status: "pending" | "accepted" | "rejected";
+      created_at: string;
+      updated_at: string;
+    }>(response);
+  },
+
+  // Get pending invites received by the user
+  getPendingInvites: async (userId: number) => {
+    const response = await fetch(`${API_BASE}/invites`, {
+      headers: { "X-User-Id": userId.toString() },
+    });
+    return handleResponse<
+      Array<{
+        id: number;
+        invitor_id: number;
+        invitor_username: string;
+        invitor_name: string;
+        invitee_id: number;
+        invitee_username: string;
+        invitee_name: string;
+        status: "pending" | "accepted" | "rejected";
+        created_at: string;
+        updated_at: string;
+      }>
+    >(response);
+  },
+
+  // Get invites sent by the user
+  getSentInvites: async (userId: number) => {
+    const response = await fetch(`${API_BASE}/invites/sent`, {
+      headers: { "X-User-Id": userId.toString() },
+    });
+    return handleResponse<
+      Array<{
+        id: number;
+        invitor_id: number;
+        invitor_username: string;
+        invitor_name: string;
+        invitee_id: number;
+        invitee_username: string;
+        invitee_name: string;
+        status: "pending" | "accepted" | "rejected";
+        created_at: string;
+        updated_at: string;
+      }>
+    >(response);
+  },
+
+  // Accept or reject an invite
+  respondToInvite: async (
+    userId: number,
+    inviteId: number,
+    status: "accepted" | "rejected"
+  ) => {
+    const response = await fetch(`${API_BASE}/invites/${inviteId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": userId.toString(),
+      },
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse<{
+      id: number;
+      invitor_id: number;
+      invitee_id: number;
+      status: string;
+      created_at: string;
+      updated_at: string;
+    }>(response);
+  },
+};
+
+// User API
+export const userApi = {
+  // Get user by username
+  getUserByUsername: async (username: string) => {
+    const response = await fetch(`${API_BASE}/users/username/${username}`);
+    return handleResponse<{
+      id: number;
+      username: string;
+      name: string;
+      email: string;
+      connect_pin: string;
+      created_at: string;
+    }>(response);
+  },
+};
+
 // WebSocket URL helper - User-centric (single connection per user)
 export function getWebSocketUrl(userId: string): string {
   const wsBase =
