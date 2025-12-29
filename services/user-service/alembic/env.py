@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 from sqlmodel import SQLModel
-from common.models import User  # Import models to register them
+from common.models import User, Invite  # Import models to register them
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

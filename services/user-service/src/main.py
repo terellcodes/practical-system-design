@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
 from src.database import init_postgres, init_redis, close_postgres, close_redis
-from src.routes import users_router, health_router
+from src.routes import users_router, health_router, invites_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(users_router, prefix="/api")
+app.include_router(invites_router, prefix="/api")
 
 
 if __name__ == "__main__":
