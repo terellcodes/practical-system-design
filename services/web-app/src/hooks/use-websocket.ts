@@ -22,6 +22,8 @@ interface WSChatMessage {
   message_id: string;
   chat_id: string;
   sender_id: string;
+  sender_username?: string;
+  sender_name?: string;
   content: string;
   created_at: string;
   upload_status?: "PENDING" | "COMPLETED" | "FAILED";
@@ -123,7 +125,7 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
-  const { addMessage, bumpChat } = useChatStore();
+  const { addMessage, bumpChat, username, name } = useChatStore();
   const { addPendingInvite, updateSentInviteStatus } = useInviteStore();
 
   // Reconnection state
@@ -189,6 +191,8 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
               message_id: data.message_id,
               chat_id: data.chat_id,
               sender_id: data.sender_id,
+              sender_username: data.sender_username,
+              sender_name: data.sender_name,
               content: data.content,
               created_at: data.created_at,
               type: "message",
@@ -378,13 +382,15 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
           type: "message",
           chat_id: chatId,
           content,
+          sender_username: username,  // Include for backend storage
+          sender_name: name,          // Include for backend storage
         })
       );
 
       // Bump chat to top when sending
       bumpChat(chatId);
     },
-    [bumpChat]
+    [bumpChat, username, name]
   );
 
   // Subscribe to a new chat (after joining)

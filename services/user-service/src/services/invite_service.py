@@ -105,7 +105,7 @@ class InviteService:
         try:
             publisher = get_publisher()
             await publisher.publish_to_user(
-                user_id=invitee.username,  # Use username as user_id for WebSocket
+                user_id=str(invitee.id),  # Use numeric ID as string for WebSocket channel
                 event_type="invite_received",
                 data={
                     "invite_id": invite.id,
@@ -199,7 +199,7 @@ class InviteService:
             event_type = "invite_accepted" if update_data.status == InviteStatus.ACCEPTED else "invite_rejected"
             
             await publisher.publish_to_user(
-                user_id=invitor.username,  # Use username as user_id for WebSocket
+                user_id=str(invite.invitor_id),  # Use numeric ID as string for WebSocket channel
                 event_type=event_type,
                 data={
                     "invite_id": invite.id,

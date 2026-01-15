@@ -23,22 +23,25 @@ interface UseCurrentUserReturn {
  * Uses the username from chat-store to fetch full user details.
  */
 export function useCurrentUser(): UseCurrentUserReturn {
-  const userId = useChatStore((state) => state.userId);
+  console.log("useCurrentUser");
+  const username = useChatStore((state) => state.username);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  console.log("username", username);
 
   useEffect(() => {
-    if (!userId) {
+    if (!username) {
       setUser(null);
       return;
     }
 
     const fetchUser = async () => {
+      console.log("fetchUser");
       setIsLoading(true);
       setError(null);
       try {
-        const userData = await userApi.getUserByUsername(userId);
+        const userData = await userApi.getUserByUsername(username);
         setUser(userData);
       } catch (err) {
         console.error("Failed to fetch user data:", err);
@@ -50,7 +53,7 @@ export function useCurrentUser(): UseCurrentUserReturn {
     };
 
     fetchUser();
-  }, [userId]);
+  }, [username]);
 
   return { user, isLoading, error };
 }

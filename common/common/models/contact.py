@@ -55,3 +55,5 @@ class ContactCheckResponse(SQLModel):
     user_id_1: int
     user_id_2: int
 
+
+

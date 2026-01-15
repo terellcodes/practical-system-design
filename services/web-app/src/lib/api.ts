@@ -233,6 +233,25 @@ export const userApi = {
       created_at: string;
     }>(response);
   },
+
+  // Login or create a user by username
+  loginOrCreateUser: async (username: string) => {
+    const response = await fetch(`${API_BASE}/users/login`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      }
+    );
+    return handleResponse<{
+      id: number;
+      username: string;
+      name: string;
+      email: string;
+      connect_pin: string;
+      created_at: string;
+    }>(response);
+  },
 };
 
 // WebSocket URL helper - User-centric (single connection per user)

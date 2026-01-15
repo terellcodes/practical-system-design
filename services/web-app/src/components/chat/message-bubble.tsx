@@ -57,7 +57,7 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
         {/* Sender name for other users */}
         {!isOwn && (
           <p className="text-xs font-medium text-primary mb-1">
-            {message.sender_id}
+            {message.sender_name || message.sender_username || message.sender_id}
           </p>
         )}
         

@@ -84,3 +84,5 @@ def get_publisher() -> RedisPublisher:
         raise RuntimeError("Redis publisher not initialized")
     return publisher
 
+
+

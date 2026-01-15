@@ -15,10 +15,10 @@ interface ChatSidebarProps {
 export function ChatSidebar({ onCreateChat }: ChatSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { userId, chats, setUserId, setSelectedChatId } = useChatStore();
+  const { userId, chats, setUser, setSelectedChatId } = useChatStore();
 
   const handleLogout = () => {
-    setUserId("");
+    setUser("", "", "");
     setSelectedChatId(null);
     router.push("/");
   };

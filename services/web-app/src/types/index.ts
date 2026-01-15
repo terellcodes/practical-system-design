@@ -26,6 +26,8 @@ export interface Message {
   message_id: string;
   chat_id: string;
   sender_id: string;
+  sender_username?: string;  // For display
+  sender_name?: string;      // For display
   content: string;
   created_at: string;
   type: "message" | "system";

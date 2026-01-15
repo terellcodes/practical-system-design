@@ -46,3 +46,5 @@ def downgrade() -> None:
     op.drop_index('ix_invites_invitor_id', table_name='invites')
     op.drop_table('invites')
 
+
+

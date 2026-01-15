@@ -224,6 +224,9 @@ class DynamoDBRepository:
         sender_id: str, 
         content: str, 
         recipient_ids: Optional[List[str]] = None,
+        # Sender display info (optional)
+        sender_username: Optional[str] = None,
+        sender_name: Optional[str] = None,
         # Attachment fields (optional)
         upload_status: Optional[str] = None,
         s3_bucket: Optional[str] = None,
@@ -241,6 +244,8 @@ class DynamoDBRepository:
             sender_id: The sender's user ID
             content: Message content
             recipient_ids: List of recipient user IDs (for inbox fanout)
+            sender_username: Optional sender's username (for display)
+            sender_name: Optional sender's display name
             upload_status: Optional upload status (PENDING, COMPLETED, FAILED)
             s3_bucket: Optional S3 bucket name for attachment
             s3_object_key: Optional S3 object key for attachment
@@ -263,6 +268,12 @@ class DynamoDBRepository:
                 'senderId': sender_id,
                 'content': content,
             }
+            
+            # Add sender display info if present
+            if sender_username:
+                message_item['senderUsername'] = sender_username
+            if sender_name:
+                message_item['senderName'] = sender_name
             
             # Add attachment fields if present
             if upload_status:

@@ -90,6 +90,8 @@ async def websocket_user(
                     # Regular chat message
                     chat_id = message.get("chat_id")
                     content = message.get("content", "")
+                    sender_username = message.get("sender_username", "")
+                    sender_name = message.get("sender_name", "")
                     
                     if not chat_id:
                         await ws_module.manager.send_personal(user_id, json.dumps({
@@ -114,7 +116,11 @@ async def websocket_user(
                     recipient_ids = [p.participant_id for p in participants if p.participant_id != user_id]
                     
                     # Write message to DynamoDB (Messages + Inbox tables)
-                    saved_message = repo.save_message(chat_id, user_id, content, recipient_ids)
+                    saved_message = repo.save_message(
+                        chat_id, user_id, content, recipient_ids,
+                        sender_username=sender_username,
+                        sender_name=sender_name,
+                    )
                     
                     # Publish message to Redis (all subscribed users will receive)
                     outgoing = json.dumps({
@@ -122,11 +128,13 @@ async def websocket_user(
                         "message_id": saved_message['message_id'],
                         "content": content,
                         "sender_id": user_id,
+                        "sender_username": sender_username,
+                        "sender_name": sender_name,
                         "chat_id": chat_id,
                         "created_at": saved_message['created_at'],
                     })
                     await ws_module.manager.publish_message(chat_id, outgoing)
-                    logger.info(f"Message {saved_message['message_id']} in {chat_id} from {user_id}: {content[:50]}...")
+                    logger.info(f"Message {saved_message['message_id']} in {chat_id} from {sender_username or user_id}: {content[:50]}...")
                 
                 elif msg_type == "subscribe":
                     # Dynamically subscribe to a new chat

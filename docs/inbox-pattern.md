@@ -261,3 +261,5 @@ result = repo.get_inbox_messages(
 
 The Inbox pattern is a powerful DynamoDB design for user-centric message views, trading write cost for read performance. It's perfect for moderate-scale chat applications but requires careful consideration for very large group sizes. Understanding this pattern demonstrates strong NoSQL data modeling skills in interviews! 🎯
 
+
+

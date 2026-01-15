@@ -25,7 +25,9 @@ interface ChatState {
 
   // User identity
   userId: string | null;
-  setUserId: (userId: string) => void;
+  username: string | null;
+  name: string | null;
+  setUser: (userId: string, username: string, name: string) => void;
 
   // Chats
   chats: Chat[];
@@ -53,12 +55,14 @@ export const useChatStore = create<ChatState>()(
 
       // User identity
       userId: null,
-      setUserId: (userId) =>
+      username: null,
+      name: null,
+      setUser: (userId, username, name) =>
         set((state) => {
           if (state.userId === userId) return state;
           const messagesByChat =
             userId && userId.length > 0 ? loadMessagesForUser(userId) : {};
-          return { userId, messagesByChat, selectedChatId: null };
+          return { userId, username, name, messagesByChat, selectedChatId: null };
         }),
 
       // Chats
@@ -118,6 +122,8 @@ export const useChatStore = create<ChatState>()(
       storage: createNamespacedStorage(),
       partialize: (state) => ({
         userId: state.userId,
+        username: state.username,
+        name: state.name,
         messagesByChat: state.messagesByChat,
       }),
       onRehydrateStorage: () => (state) => {
@@ -128,9 +134,11 @@ export const useChatStore = create<ChatState>()(
   )
 );
 
-// Custom storage: userId in sessionStorage; messagesByChat in localStorage, namespaced by userId
+// Custom storage: userId, username, name in sessionStorage; messagesByChat in localStorage, namespaced by userId
 type PersistedShape = {
   userId: string | null;
+  username: string | null;
+  name: string | null;
   messagesByChat: Record<string, Message[]>;
 };
 
@@ -139,8 +147,13 @@ function createNamespacedStorage(): PersistStorage<PersistedShape> {
   return {
     getItem: () => {
       if (!isBrowser) return null;
-      const userId = sessionStorage.getItem(USER_KEY);
 
+      // Read user identity from sessionStorage (tab-specific)
+      const userId = sessionStorage.getItem(USER_KEY);
+      const username = sessionStorage.getItem('chat-username');
+      const name = sessionStorage.getItem('chat-name');
+
+      // Read messages from localStorage (shared but namespaced by userId)
       const rawMessages =
         userId !== null ? localStorage.getItem(messagesKey(userId)) : null;
       let messagesByChat: Record<string, Message[]> = {};
@@ -152,9 +165,12 @@ function createNamespacedStorage(): PersistStorage<PersistedShape> {
           messagesByChat = {};
         }
       }
+
       return {
         state: {
           userId,
+          username,
+          name,
           messagesByChat,
         },
         version: 0,
@@ -166,8 +182,11 @@ function createNamespacedStorage(): PersistStorage<PersistedShape> {
       try {
         const { state } = value || {};
         const userId = state?.userId;
+        const username = state?.username;
+        const userName = state?.name;
         const messagesByChat = state?.messagesByChat;
-        // store userId in sessionStorage
+
+        // Store user identity in sessionStorage (tab-specific)
         if (userId !== undefined) {
           if (userId === null) {
             sessionStorage.removeItem(USER_KEY);
@@ -175,7 +194,24 @@ function createNamespacedStorage(): PersistStorage<PersistedShape> {
             sessionStorage.setItem(USER_KEY, userId);
           }
         }
-        // store messages in a user-namespaced key in localStorage
+
+        if (username !== undefined) {
+          if (username === null) {
+            sessionStorage.removeItem('chat-username');
+          } else {
+            sessionStorage.setItem('chat-username', username);
+          }
+        }
+
+        if (userName !== undefined) {
+          if (userName === null) {
+            sessionStorage.removeItem('chat-name');
+          } else {
+            sessionStorage.setItem('chat-name', userName);
+          }
+        }
+
+        // Store messages in localStorage (shared but namespaced by userId)
         const key = messagesKey(userId ?? null);
         localStorage.setItem(
           key,
@@ -193,6 +229,8 @@ function createNamespacedStorage(): PersistStorage<PersistedShape> {
         localStorage.removeItem(messagesKey(userId));
       }
       sessionStorage.removeItem(USER_KEY);
+      sessionStorage.removeItem('chat-username');
+      sessionStorage.removeItem('chat-name');
     },
   };
 }

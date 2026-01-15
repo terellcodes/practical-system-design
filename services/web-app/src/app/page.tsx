@@ -6,10 +6,12 @@ import { useChatStore } from "@/store/chat-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sparkles } from "lucide-react";
+import { userApi } from "@/lib/api";
+import { User } from "@/types";
 
 export default function Home() {
   const router = useRouter();
-  const { userId, setUserId, _hasHydrated } = useChatStore();
+  const { userId, setUser, _hasHydrated } = useChatStore();
   const [inputUserId, setInputUserId] = useState("");
 
   useEffect(() => {
@@ -18,10 +20,11 @@ export default function Home() {
     }
   }, [_hasHydrated, userId, router]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (inputUserId.trim()) {
-      setUserId(inputUserId.trim());
+      const userData: User = await userApi.loginOrCreateUser(inputUserId.trim());
+      setUser(userData.id.toString(), userData.username, userData.name);
       router.push("/chat");
     }
   };
