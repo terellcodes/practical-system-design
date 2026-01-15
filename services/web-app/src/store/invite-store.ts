@@ -14,12 +14,6 @@ interface InviteState {
   addSentInvite: (invite: InviteWithUsers) => void;
   updateSentInviteStatus: (inviteId: number, status: string) => void;
 
-  // UI state
-  showInviteNotification: boolean;
-  latestInvite: InviteWithUsers | null;
-  setShowInviteNotification: (show: boolean) => void;
-  setLatestInvite: (invite: InviteWithUsers | null) => void;
-
   // Loading state
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -37,8 +31,6 @@ export const useInviteStore = create<InviteState>((set) => ({
       }
       return {
         pendingInvites: [invite, ...state.pendingInvites],
-        latestInvite: invite,
-        showInviteNotification: true,
       };
     }),
   removePendingInvite: (inviteId) =>
@@ -59,12 +51,6 @@ export const useInviteStore = create<InviteState>((set) => ({
         i.id === inviteId ? { ...i, status: status as InviteWithUsers["status"] } : i
       ),
     })),
-
-  // UI state
-  showInviteNotification: false,
-  latestInvite: null,
-  setShowInviteNotification: (show) => set({ showInviteNotification: show }),
-  setLatestInvite: (invite) => set({ latestInvite: invite }),
 
   // Loading
   isLoading: false,

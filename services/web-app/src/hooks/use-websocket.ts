@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useChatStore } from "@/store/chat-store";
 import { useInviteStore } from "@/store/invite-store";
+import { useNotificationStore, type Notification } from "@/store/notification-store";
 import { getWebSocketUrl } from "@/lib/api";
 import { chatApi } from "@/lib/api";
 import type { Message, InviteWithUsers } from "@/types";
@@ -127,6 +128,13 @@ export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn 
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
   const { addMessage, bumpChat, username, name } = useChatStore();
   const { addPendingInvite, updateSentInviteStatus } = useInviteStore();
+  // Use getState() to avoid re-render dependency chain issues
+  const addNotification = useCallback(
+    (notification: Omit<Notification, "id" | "createdAt">) => {
+      useNotificationStore.getState().addNotification(notification);
+    },
+    []
+  );
 
   // Reconnection state
   const reconnectAttempts = useRef(0);
@@ -269,7 +277,19 @@ export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn 
               created_at: inviteData.created_at,
               updated_at: inviteData.created_at,
             };
+            // Add to pending invites list
             addPendingInvite(invite);
+            // Show notification via unified notification system
+            addNotification({
+              type: "invite_received",
+              source: "contacts",
+              priority: "medium",
+              category: "invites",
+              title: "New Contact Invite",
+              message: `${inviteData.invitor_name} wants to connect with you`,
+              data: inviteData,
+              expiresAt: new Date(Date.now() + 5000),
+            });
             break;
           }
 
@@ -291,7 +311,7 @@ export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn 
         console.error("Failed to parse WebSocket message:", error);
       }
     },
-    [userId, addMessage, bumpChat, addPendingInvite, updateSentInviteStatus]
+    [userId, addMessage, bumpChat, addPendingInvite, updateSentInviteStatus, addNotification]
   );
 
   // Connect function - can be called for initial connection or reconnection
