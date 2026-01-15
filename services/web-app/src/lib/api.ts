@@ -114,6 +114,8 @@ export const chatApi = {
     filename: string;
     content_type: string;
     content?: string;
+    sender_username?: string;
+    sender_name?: string;
   }) => {
     const response = await fetch(`${API_BASE}/chats/${chatId}/messages/upload-request`, {
       method: "POST",

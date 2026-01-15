@@ -155,8 +155,10 @@ class UploadCompletionConsumer:
             msg_record = items[0]
             created_at_raw = msg_record.get('createdAt', 0)
             created_at = int(float(created_at_raw))
-            sender_id = msg_record.get('senderId')
+            sender_id = int(msg_record.get('senderId', '0'))  # Convert string to int for frontend compatibility
             content = msg_record.get('content', '')
+            sender_username = msg_record.get('senderUsername')
+            sender_name = msg_record.get('senderName')
             
             # 2. Update message status to COMPLETED
             success = self.repository.update_message_upload_status(
@@ -190,7 +192,7 @@ class UploadCompletionConsumer:
                 created_at_iso = datetime.utcfromtimestamp(created_at / 1000).isoformat()
 
                 # Build the WebSocket message
-                ws_message = json.dumps({
+                ws_payload = {
                     "type": "message",
                     "message_id": message_id,
                     "chat_id": chat_id,
@@ -200,7 +202,13 @@ class UploadCompletionConsumer:
                     "upload_status": "COMPLETED",
                     "s3_bucket": s3_bucket,
                     "s3_key": s3_key,
-                })
+                }
+                # Include sender display info if available
+                if sender_username:
+                    ws_payload["sender_username"] = sender_username
+                if sender_name:
+                    ws_payload["sender_name"] = sender_name
+                ws_message = json.dumps(ws_payload)
                 
                 await ws_module.manager.publish_message(chat_id, ws_message)
                 logger.info(f"Published message {message_id} to Redis for WebSocket broadcast")

@@ -103,6 +103,8 @@ class UploadRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255, description="Original filename")
     content_type: str = Field(..., description="MIME type of the file (e.g., image/jpeg, video/mp4)")
     content: str = Field(default="", max_length=5000, description="Optional message content/caption")
+    sender_username: Optional[str] = Field(default=None, description="Username of the sender for display")
+    sender_name: Optional[str] = Field(default=None, description="Display name of the sender")
 
     class Config:
         json_schema_extra = {
@@ -110,7 +112,9 @@ class UploadRequest(BaseModel):
                 "sender_id": "user-123",
                 "filename": "photo.jpg",
                 "content_type": "image/jpeg",
-                "content": "Check out this photo!"
+                "content": "Check out this photo!",
+                "sender_username": "alice",
+                "sender_name": "Alice Smith"
             }
         }
 

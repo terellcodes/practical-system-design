@@ -14,7 +14,7 @@ export default function ChatConversationPage() {
   const params = useParams();
   const chatId = params.chatId as string;
 
-  const { userId, chats, messagesByChat, addMessage, bumpChat } = useChatStore();
+  const { userId, username, name, chats, messagesByChat, addMessage, bumpChat } = useChatStore();
   
   // Get WebSocket from context (single connection for all chats)
   const { isConnected, sendMessage } = useWebSocket();
@@ -55,6 +55,8 @@ export default function ChatConversationPage() {
           filename: file.name,
           content_type: contentType,
           content: fallbackContent,
+          sender_username: username ?? undefined,
+          sender_name: name ?? undefined,
         });
 
         // Add a local pending message placeholder
@@ -94,7 +96,7 @@ export default function ChatConversationPage() {
         });
       }
     },
-    [chatId, userId, addMessage, bumpChat, sendMessage]
+    [chatId, userId, username, name, addMessage, bumpChat, sendMessage]
   );
 
   // Update document title with chat name

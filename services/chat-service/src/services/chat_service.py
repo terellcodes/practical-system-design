@@ -246,6 +246,8 @@ class ChatService:
             s3_bucket=S3_CONFIG.bucket_name,
             s3_object_key=s3_key,
             message_id=message_id,
+            sender_username=request.sender_username,
+            sender_name=request.sender_name,
         )
         
         logger.info(f"Created PENDING message {message_id} for upload in chat {chat_id}")
