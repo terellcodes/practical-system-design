@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useChatStore } from "@/store/chat-store";
-import { chatApi } from "@/lib/api";
+import { useContactStore } from "@/store/contact-store";
+import { chatApi, contactApi } from "@/lib/api";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { CreateChatDialog } from "@/components/chat/create-chat-dialog";
 import { WebSocketProvider, useWebSocket } from "@/contexts/websocket-context";
@@ -16,31 +17,41 @@ function ChatLayoutContent({
 }) {
   const router = useRouter();
   const { userId, setChats, addChat, _hasHydrated } = useChatStore();
+  const { setContacts, setLoading: setContactsLoading } = useContactStore();
   const { isConnected, isSyncing, subscribeToChat } = useWebSocket();
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Fetch user's chats
-  const fetchChats = useCallback(async () => {
+  // Fetch user's chats and contacts in parallel
+  const fetchChatsAndContacts = useCallback(async () => {
     if (!userId) return;
-    
+
+    setLoading(true);
+    setContactsLoading(true);
+
     try {
-      const chats = await chatApi.getChatsForParticipant(userId);
+      const [chats, contacts] = await Promise.all([
+        chatApi.getChatsForParticipant(userId),
+        contactApi.getContacts(userId),
+      ]);
+
       setChats(chats);
+      setContacts(contacts);
     } catch (error) {
-      console.error("Failed to fetch chats:", error);
+      console.error("Failed to fetch chats/contacts:", error);
     } finally {
       setLoading(false);
+      setContactsLoading(false);
     }
-  }, [userId, setChats]);
+  }, [userId, setChats, setContacts, setContactsLoading]);
 
   useEffect(() => {
     if (_hasHydrated && !userId) {
       router.push("/");
     } else if (_hasHydrated && userId) {
-      fetchChats();
+      fetchChatsAndContacts();
     }
-  }, [_hasHydrated, userId, router, fetchChats]);
+  }, [_hasHydrated, userId, router, fetchChatsAndContacts]);
 
   const handleCreateChat = async (name: string) => {
     if (!userId) return;

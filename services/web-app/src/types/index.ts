@@ -46,6 +46,13 @@ export interface User {
   created_at: string;
 }
 
+// Contact types
+export interface ContactWithUser {
+  contact_id: number;
+  contact_username: string;
+  contact_name: string;
+}
+
 // Invite types
 export type InviteStatus = "pending" | "accepted" | "rejected";
 

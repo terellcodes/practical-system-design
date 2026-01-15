@@ -222,6 +222,25 @@ export const inviteApi = {
   },
 };
 
+// Contact API
+export const contactApi = {
+  // Get all contacts for a user
+  getContacts: async (userId: number) => {
+    const response = await fetch(`${API_BASE}/contacts`, {
+      headers: {
+        "X-User-Id": userId.toString(),
+      },
+    });
+    return handleResponse<
+      Array<{
+        contact_id: number;
+        contact_username: string;
+        contact_name: string;
+      }>
+    >(response);
+  },
+};
+
 // User API
 export const userApi = {
   // Get user by username
