@@ -89,16 +89,26 @@ interface WSInviteRejectedMessage {
   };
 }
 
-type WSMessage = 
-  | WSConnectedMessage 
-  | WSChatMessage 
-  | WSSystemMessage 
-  | WSSubscribedMessage 
-  | WSErrorMessage 
+interface WSChatParticipantAddedMessage {
+  type: "chat_participant_added";
+  data: {
+    chat_id: string;
+    chat_name: string;
+    added_by_user_id: number;
+  };
+}
+
+type WSMessage =
+  | WSConnectedMessage
+  | WSChatMessage
+  | WSSystemMessage
+  | WSSubscribedMessage
+  | WSErrorMessage
   | WSPongMessage
   | WSInviteReceivedMessage
   | WSInviteAcceptedMessage
-  | WSInviteRejectedMessage;
+  | WSInviteRejectedMessage
+  | WSChatParticipantAddedMessage;
 
 interface UseUserWebSocketReturn {
   isConnected: boolean;
@@ -126,7 +136,7 @@ export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn 
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [subscribedChats, setSubscribedChats] = useState<string[]>([]);
-  const { addMessage, bumpChat, username, name } = useChatStore();
+  const { addMessage, bumpChat, addChat, username, name } = useChatStore();
   const { addPendingInvite, updateSentInviteStatus } = useInviteStore();
   // Use getState() to avoid re-render dependency chain issues
   const addNotification = useCallback(
@@ -306,12 +316,55 @@ export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn 
             updateSentInviteStatus(data.data.invite_id, "rejected");
             break;
           }
+
+          case "chat_participant_added": {
+            // User was added to a chat
+            console.log("Added to chat:", data.data);
+
+            // Show notification
+            addNotification({
+              type: "chat_participant_added",
+              source: "chat",
+              priority: "medium",
+              category: "chat",
+              title: "Added to Chat",
+              message: `You were added to "${data.data.chat_name}"`,
+              data: data.data,
+              expiresAt: new Date(Date.now() + 5000),
+            });
+
+            // Fetch the new chat and add to local state
+            const fetchAndAddChat = async () => {
+              try {
+                const chatResponse = await chatApi.getChat(data.data.chat_id);
+                const chat = chatResponse.chat;
+
+                // Add to local store
+                addChat(chat);
+
+                // Subscribe to the new chat via WebSocket
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(
+                    JSON.stringify({
+                      type: "subscribe",
+                      chat_id: data.data.chat_id,
+                    })
+                  );
+                }
+              } catch (error) {
+                console.error("Failed to fetch new chat:", error);
+              }
+            };
+
+            fetchAndAddChat();
+            break;
+          }
         }
       } catch (error) {
         console.error("Failed to parse WebSocket message:", error);
       }
     },
-    [userId, addMessage, bumpChat, addPendingInvite, updateSentInviteStatus, addNotification]
+    [userId, addMessage, bumpChat, addPendingInvite, updateSentInviteStatus, addNotification, addChat]
   );
 
   // Connect function - can be called for initial connection or reconnection

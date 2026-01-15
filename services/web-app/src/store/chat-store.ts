@@ -68,7 +68,14 @@ export const useChatStore = create<ChatState>()(
       // Chats
       chats: [],
       setChats: (chats) => set({ chats }),
-      addChat: (chat) => set((state) => ({ chats: [chat, ...state.chats] })),
+      addChat: (chat) =>
+        set((state) => {
+          // Check if chat already exists to prevent duplicates
+          if (state.chats.some((c) => c.id === chat.id)) {
+            return state;
+          }
+          return { chats: [chat, ...state.chats] };
+        }),
       bumpChat: (chatId) =>
         set((state) => {
           const chat = state.chats.find((c) => c.id === chatId);

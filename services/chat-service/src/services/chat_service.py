@@ -2,6 +2,7 @@
 Chat business logic service
 """
 
+import json
 import logging
 import uuid
 from typing import List, Optional
@@ -13,6 +14,7 @@ from common.storage import create_s3_client, generate_presigned_upload_url, gene
 from src.repositories.dynamodb import DynamoDBRepository
 from src.services.user_service_client import check_contacts_batch
 from src.config import S3_CONFIG
+from src import websocket as ws_module
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +113,49 @@ class ChatService:
             if not self.repository.is_participant(chat_id, pid):
                 participant = self.repository.add_participant(chat_id, pid)
                 added.append(participant)
-        
+
+        # Publish realtime notifications to added participants
+        if added:
+            await self._notify_participants_added(chat_id, added, current_user)
+
         return added
+
+    async def _notify_participants_added(
+        self,
+        chat_id: str,
+        participants: List[ChatParticipant],
+        added_by_user_id: int
+    ) -> None:
+        """
+        Notify participants that they were added to a chat.
+
+        Publishes to each user's personal Redis channel (user:{user_id}).
+        """
+        # Get chat details for notification
+        chat = self.repository.get_chat(chat_id)
+        if not chat:
+            logger.warning(f"Chat {chat_id} not found for notification")
+            return
+
+        # Publish to each added participant
+        for participant in participants:
+            message = json.dumps({
+                "type": "chat_participant_added",
+                "data": {
+                    "chat_id": chat_id,
+                    "chat_name": chat.name,
+                    "added_by_user_id": added_by_user_id,
+                }
+            })
+
+            # Publish to user's personal channel
+            channel = f"user:{participant.participant_id}"
+            try:
+                if ws_module.manager and ws_module.manager.redis_client:
+                    await ws_module.manager.redis_client.publish(channel, message)
+                    logger.info(f"Notified user {participant.participant_id} about being added to {chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to notify user {participant.participant_id}: {e}")
 
     def remove_participant(self, chat_id: str, participant_id: int) -> bool:
         """Remove a participant from a chat."""
