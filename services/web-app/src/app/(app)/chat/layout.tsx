@@ -7,6 +7,7 @@ import { useContactStore } from "@/store/contact-store";
 import { chatApi, contactApi } from "@/lib/api";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { CreateChatDialog } from "@/components/chat/create-chat-dialog";
+import { ContactPickerDialog } from "@/components/chat/contact-picker-dialog";
 import { WebSocketProvider, useWebSocket } from "@/contexts/websocket-context";
 import { Loader2, Wifi, WifiOff } from "lucide-react";
 
@@ -21,6 +22,8 @@ function ChatLayoutContent({
   const { isConnected, isSyncing, subscribeToChat } = useWebSocket();
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [newChatId, setNewChatId] = useState<string | null>(null);
 
   // Fetch user's chats and contacts in parallel
   const fetchChatsAndContacts = useCallback(async () => {
@@ -61,15 +64,39 @@ function ChatLayoutContent({
 
     // Add the creator as a participant (using numeric user ID)
     await chatApi.addParticipants(newChat.id, [userId], userId);
-    
+
     // Add to local store
     addChat(newChat);
-    
+
     // Subscribe to the new chat via WebSocket
     subscribeToChat(newChat.id);
-    
+
+    // Store chat ID and open contact picker
+    setNewChatId(newChat.id);
+    setContactPickerOpen(true);
+  };
+
+  const handleAddContactsToChat = async (contactIds: number[]) => {
+    if (!userId || !newChatId) return;
+
+    // Add participants to backend
+    await chatApi.addParticipants(newChatId, contactIds, userId);
+
     // Navigate to the new chat
-    router.push(`/chat/${newChat.id}`);
+    router.push(`/chat/${newChatId}`);
+
+    // Reset state
+    setNewChatId(null);
+  };
+
+  const handleContactPickerClose = (open: boolean) => {
+    setContactPickerOpen(open);
+
+    // If closing without adding contacts, navigate to chat
+    if (!open && newChatId) {
+      router.push(`/chat/${newChatId}`);
+      setNewChatId(null);
+    }
   };
 
   if (!_hasHydrated || !userId) {
@@ -116,6 +143,13 @@ function ChatLayoutContent({
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         onCreateChat={handleCreateChat}
+      />
+
+      <ContactPickerDialog
+        open={contactPickerOpen}
+        onOpenChange={handleContactPickerClose}
+        onSelectContacts={handleAddContactsToChat}
+        excludeUserIds={userId ? [userId] : []}
       />
     </div>
   );
