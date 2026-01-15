@@ -74,21 +74,21 @@ class ChatService:
         return True
 
     async def add_participants(
-        self, 
-        chat_id: str, 
-        participant_ids: List[str],
-        current_user: str
+        self,
+        chat_id: str,
+        participant_ids: List[int],
+        current_user: int
     ) -> List[ChatParticipant]:
         """
         Add participants to a chat.
-        
+
         Verifies that all participants are contacts of the current user.
-        
+
         Args:
             chat_id: The chat to add participants to
-            participant_ids: List of usernames to add
-            current_user: Username of the user adding participants
-            
+            participant_ids: List of user IDs to add
+            current_user: User ID of the user adding participants
+
         Raises:
             HTTPException 400 if any participant is not a contact
         """
@@ -98,11 +98,11 @@ class ChatService:
         contact_status = await check_contacts_batch(current_user, participant_ids)
         
         non_contacts = [pid for pid, is_contact in contact_status.items() if not is_contact]
-        
+
         if non_contacts:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot add non-contacts to chat: {', '.join(non_contacts)}"
+                detail=f"Cannot add non-contacts to chat: {', '.join(str(pid) for pid in non_contacts)}"
             )
         
         # All verified as contacts, proceed with adding
@@ -114,32 +114,32 @@ class ChatService:
         
         return added
 
-    def remove_participant(self, chat_id: str, participant_id: str) -> bool:
+    def remove_participant(self, chat_id: str, participant_id: int) -> bool:
         """Remove a participant from a chat."""
         self.get_chat(chat_id)  # Verify exists
-        
+
         if not self.repository.is_participant(chat_id, participant_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Participant {participant_id} not in chat {chat_id}"
             )
-        
+
         self.repository.remove_participant(chat_id, participant_id)
         return True
 
-    def get_chats_for_participant(self, participant_id: str) -> List[Chat]:
+    def get_chats_for_participant(self, participant_id: int) -> List[Chat]:
         """Get all chats for a participant."""
         chat_ids = self.repository.get_chats_for_participant(participant_id)
-        
+
         chats = []
         for cid in chat_ids:
             chat = self.repository.get_chat(cid)
             if chat:
                 chats.append(chat)
-        
+
         return chats
-    
-    def get_messages_from_inbox(self, recipient_id: str) -> dict:
+
+    def get_messages_from_inbox(self, recipient_id: int) -> dict:
         return self.repository.get_inbox_messages(recipient_id)
     
     def request_upload(self, chat_id: str, request: UploadRequest) -> UploadRequestResponse:

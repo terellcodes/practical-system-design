@@ -55,17 +55,17 @@ class ConnectionManager:
     
     def __init__(self, redis_url: str):
         # user_id -> WebSocket connection (one per user)
-        self.user_connections: Dict[str, WebSocket] = {}
-        
+        self.user_connections: Dict[int, WebSocket] = {}
+
         # user_id -> Set of chat_ids they're subscribed to
-        self.user_subscriptions: Dict[str, Set[str]] = {}
-        
+        self.user_subscriptions: Dict[int, Set[str]] = {}
+
         # user_id -> Redis PubSub object
-        self.user_pubsubs: Dict[str, aioredis.client.PubSub] = {}
-        
+        self.user_pubsubs: Dict[int, aioredis.client.PubSub] = {}
+
         # user_id -> asyncio.Task for the listener
-        self.user_tasks: Dict[str, asyncio.Task] = {}
-        
+        self.user_tasks: Dict[int, asyncio.Task] = {}
+
         # Redis client for publishing
         self.redis_url = redis_url
         self.redis_client: Optional[aioredis.Redis] = None
@@ -95,26 +95,26 @@ class ConnectionManager:
         
         logger.info("Redis connections closed")
     
-    async def connect(self, websocket: WebSocket, user_id: str, chat_ids: List[str]) -> None:
+    async def connect(self, websocket: WebSocket, user_id: int, chat_ids: List[str]) -> None:
         """
         Accept a new WebSocket connection for a user.
         Subscribes to Redis channels for all their chats.
-        
+
         Args:
             websocket: The WebSocket connection
             user_id: The user's ID
             chat_ids: List of chat IDs the user is part of
         """
         await websocket.accept()
-        
+
         # Store the connection
         self.user_connections[user_id] = websocket
         self.user_subscriptions[user_id] = set(chat_ids)
-        
+
         # Create pubsub and subscribe to all chat channels
         pubsub = self.redis_client.pubsub()
         self.user_pubsubs[user_id] = pubsub
-        
+
         # Subscribe to user's personal channel (for direct notifications like invites)
         user_channel = f"user:{user_id}"
         await pubsub.subscribe(user_channel)
@@ -132,7 +132,7 @@ class ConnectionManager:
         
         logger.info(f"User {user_id} connected. Total users: {len(self.user_connections)}")
     
-    async def disconnect(self, user_id: str) -> None:
+    async def disconnect(self, user_id: int) -> None:
         """
         Remove a user's WebSocket connection and cleanup.
         """
@@ -156,7 +156,7 @@ class ConnectionManager:
         
         logger.info(f"User {user_id} disconnected. Total users: {len(self.user_connections)}")
     
-    async def subscribe_to_chat(self, user_id: str, chat_id: str) -> bool:
+    async def subscribe_to_chat(self, user_id: int, chat_id: str) -> bool:
         """
         Dynamically subscribe a connected user to a new chat.
         Called when user joins a chat while already connected.
@@ -183,7 +183,7 @@ class ConnectionManager:
         logger.info(f"User {user_id} dynamically subscribed to {chat_id}")
         return True
     
-    async def unsubscribe_from_chat(self, user_id: str, chat_id: str) -> bool:
+    async def unsubscribe_from_chat(self, user_id: int, chat_id: str) -> bool:
         """
         Dynamically unsubscribe a connected user from a chat.
         Called when user leaves a chat while still connected.
@@ -204,7 +204,7 @@ class ConnectionManager:
         logger.info(f"User {user_id} unsubscribed from {chat_id}")
         return True
     
-    async def _listen_for_user(self, user_id: str, pubsub: aioredis.client.PubSub) -> None:
+    async def _listen_for_user(self, user_id: int, pubsub: aioredis.client.PubSub) -> None:
         """
         Background task that listens for messages on all subscribed channels.
         Routes messages to the user's WebSocket connection.
@@ -248,7 +248,7 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Failed to publish to Redis: {e}")
     
-    async def send_personal(self, user_id: str, message: str) -> None:
+    async def send_personal(self, user_id: int, message: str) -> None:
         """
         Send a message directly to a specific user.
         """
@@ -258,11 +258,11 @@ class ConnectionManager:
             except Exception as e:
                 logger.warning(f"Failed to send personal message to {user_id}: {e}")
     
-    def is_user_connected(self, user_id: str) -> bool:
+    def is_user_connected(self, user_id: int) -> bool:
         """Check if a user is currently connected."""
         return user_id in self.user_connections
     
-    def get_user_subscriptions(self, user_id: str) -> Set[str]:
+    def get_user_subscriptions(self, user_id: int) -> Set[str]:
         """Get the set of chat_ids a user is subscribed to."""
         return self.user_subscriptions.get(user_id, set())
     

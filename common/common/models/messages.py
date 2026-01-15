@@ -23,7 +23,7 @@ class UploadStatus(str, Enum):
 class MessageCreate(BaseModel):
     """Request model for creating a message"""
     chat_id: str = Field(..., description="Chat ID this message belongs to")
-    sender_id: str = Field(..., description="ID of the user sending the message")
+    sender_id: int = Field(..., description="ID of the user sending the message")
     content: str = Field(..., min_length=1, max_length=5000, description="Message content")
     
     # Attachment fields (optional)
@@ -45,7 +45,7 @@ class Message(BaseModel):
     """Response model for a message"""
     message_id: str = Field(..., description="Message's unique identifier")
     chat_id: str = Field(..., description="Chat ID this message belongs to")
-    sender_id: str = Field(..., description="ID of the user who sent the message")
+    sender_id: int = Field(..., description="ID of the user who sent the message")
     content: str = Field(..., description="Message content")
     created_at: datetime = Field(..., description="Timestamp when message was created")
     
@@ -99,7 +99,7 @@ class MessageList(BaseModel):
 
 class UploadRequest(BaseModel):
     """Request model for requesting an upload URL"""
-    sender_id: str = Field(..., description="ID of the user uploading the file")
+    sender_id: int = Field(..., description="ID of the user uploading the file")
     filename: str = Field(..., min_length=1, max_length=255, description="Original filename")
     content_type: str = Field(..., description="MIME type of the file (e.g., image/jpeg, video/mp4)")
     content: str = Field(default="", max_length=5000, description="Optional message content/caption")

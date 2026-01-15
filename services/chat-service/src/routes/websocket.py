@@ -32,7 +32,7 @@ router = APIRouter(tags=["WebSocket"])
 @router.websocket("/ws")
 async def websocket_user(
     websocket: WebSocket,
-    user_id: str = Query(..., description="User ID connecting"),
+    user_id: int = Query(..., description="User ID connecting"),
 ):
     """
     User-centric WebSocket endpoint for real-time chat.
@@ -114,7 +114,7 @@ async def websocket_user(
                     # Get chat participants for inbox fanout
                     participants = repo.get_participants_for_chat(chat_id)
                     recipient_ids = [p.participant_id for p in participants if p.participant_id != user_id]
-                    
+
                     # Write message to DynamoDB (Messages + Inbox tables)
                     saved_message = repo.save_message(
                         chat_id, user_id, content, recipient_ids,

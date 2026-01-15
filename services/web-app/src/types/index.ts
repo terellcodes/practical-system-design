@@ -11,7 +11,7 @@ export interface Chat {
 
 export interface ChatParticipant {
   chat_id: string;
-  participant_id: string;
+  participant_id: number;
   joined_at: string;
 }
 
@@ -25,7 +25,7 @@ export type UploadStatus = "PENDING" | "COMPLETED" | "FAILED" | undefined;
 export interface Message {
   message_id: string;
   chat_id: string;
-  sender_id: string;
+  sender_id: number;
   sender_username?: string;  // For display
   sender_name?: string;      // For display
   content: string;
@@ -93,7 +93,7 @@ export interface WSMessage {
   type: "message" | "system" | "pong" | "error";
   content?: string;
   message_id?: string;
-  sender_id?: string;
+  sender_id?: number;
   chat_id?: string;
   created_at?: string;
   timestamp?: string;
@@ -102,7 +102,7 @@ export interface WSMessage {
 export interface WSAckMessage {
   type: "ack-message-recieved";
   message_id: string;
-  recipient_id: string;
+  recipient_id: number;
 }
 
 export interface WSSendMessage {

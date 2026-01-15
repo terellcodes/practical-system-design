@@ -47,9 +47,9 @@ function ChatLayoutContent({
 
     // Create the chat
     const newChat = await chatApi.createChat(name);
-    
-    // Add the creator as a participant
-    await chatApi.addParticipants(newChat.id, [userId]);
+
+    // Add the creator as a participant (using numeric user ID)
+    await chatApi.addParticipants(newChat.id, [userId], userId);
     
     // Add to local store
     addChat(newChat);

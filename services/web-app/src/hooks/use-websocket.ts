@@ -12,7 +12,7 @@ import type { Message, InviteWithUsers } from "@/types";
  */
 interface WSConnectedMessage {
   type: "connected";
-  user_id: string;
+  user_id: number;
   subscribed_chats: string[];
   timestamp: string;
 }
@@ -21,7 +21,7 @@ interface WSChatMessage {
   type: "message";
   message_id: string;
   chat_id: string;
-  sender_id: string;
+  sender_id: number;
   sender_username?: string;
   sender_name?: string;
   content: string;
@@ -120,7 +120,7 @@ const BASE_RECONNECT_DELAY = 1000; // 1 second
  * 
  * Auto-reconnects on unexpected disconnects with exponential backoff.
  */
-export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn {
+export function useUserWebSocket(userId: number | null): UseUserWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -220,7 +220,7 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
             const systemMessage: Message = {
               message_id: `system-${Date.now()}`,
               chat_id: data.chat_id,
-              sender_id: "system",
+              sender_id: 0,  // 0 represents system messages
               content: data.content,
               created_at: data.timestamp,
               type: "system",
@@ -262,8 +262,8 @@ export function useUserWebSocket(userId: string | null): UseUserWebSocketReturn 
               invitor_id: inviteData.invitor_id,
               invitor_username: inviteData.invitor_username,
               invitor_name: inviteData.invitor_name,
-              invitee_id: 0, // We are the invitee
-              invitee_username: userId || "",
+              invitee_id: userId || 0,  // We are the invitee
+              invitee_username: "",  // Will be populated from store if needed
               invitee_name: "",
               status: "pending",
               created_at: inviteData.created_at,

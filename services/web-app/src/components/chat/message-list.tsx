@@ -7,7 +7,7 @@ import type { Message } from "@/types";
 
 interface MessageListProps {
   messages: Message[];
-  currentUserId: string;
+  currentUserId: number;
 }
 
 export function MessageList({ messages, currentUserId }: MessageListProps) {

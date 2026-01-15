@@ -47,7 +47,7 @@ class Chat(BaseModel):
 class ChatParticipant(BaseModel):
     """Model for a chat participant relationship"""
     chat_id: str = Field(..., description="Chat ID")
-    participant_id: str = Field(..., description="Participant ID (user ID)")
+    participant_id: int = Field(..., description="Participant ID (user ID)")
     joined_at: datetime = Field(..., description="Timestamp when participant joined")
 
     class Config:
@@ -62,7 +62,7 @@ class ChatParticipant(BaseModel):
 
 class AddParticipantsRequest(BaseModel):
     """Request model for adding participants to a chat"""
-    participant_ids: List[str] = Field(..., min_length=1, description="List of participant IDs to add")
+    participant_ids: List[int] = Field(..., min_length=1, description="List of participant IDs to add")
 
     class Config:
         json_schema_extra = {

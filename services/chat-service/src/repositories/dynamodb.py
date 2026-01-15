@@ -127,13 +127,13 @@ class DynamoDBRepository:
     # ChatParticipant Operations
     # =========================================================================
 
-    def add_participant(self, chat_id: str, participant_id: str) -> ChatParticipant:
+    def add_participant(self, chat_id: str, participant_id: int) -> ChatParticipant:
         """Add a participant to a chat."""
         try:
             now = datetime.utcnow()
             item = {
                 'chatId': chat_id,
-                'participantId': participant_id,
+                'participantId': str(participant_id),  # Convert int to str for DynamoDB
                 'joinedAt': now.isoformat(),
             }
 
@@ -142,7 +142,7 @@ class DynamoDBRepository:
 
             return ChatParticipant(
                 chat_id=chat_id,
-                participant_id=participant_id,
+                participant_id=participant_id,  # Return as int
                 joined_at=now,
             )
         except ClientError as e:
@@ -152,11 +152,11 @@ class DynamoDBRepository:
                 detail=f"Failed to add participant: {str(e)}"
             )
 
-    def remove_participant(self, chat_id: str, participant_id: str) -> bool:
+    def remove_participant(self, chat_id: str, participant_id: int) -> bool:
         """Remove a participant from a chat."""
         try:
             self.participants_table.delete_item(
-                Key={'chatId': chat_id, 'participantId': participant_id}
+                Key={'chatId': chat_id, 'participantId': str(participant_id)}  # Convert int to str for DynamoDB key
             )
             logger.info(f"Participant {participant_id} removed from chat {chat_id}")
             return True
@@ -177,7 +177,7 @@ class DynamoDBRepository:
             return [
                 ChatParticipant(
                     chat_id=item['chatId'],
-                    participant_id=item['participantId'],
+                    participant_id=int(item['participantId']),  # Convert str to int from DynamoDB
                     joined_at=datetime.fromisoformat(item['joinedAt']),
                 )
                 for item in response.get('Items', [])
@@ -189,12 +189,12 @@ class DynamoDBRepository:
                 detail=f"Failed to get participants: {str(e)}"
             )
 
-    def get_chats_for_participant(self, participant_id: str) -> List[str]:
+    def get_chats_for_participant(self, participant_id: int) -> List[str]:
         """Get all chat IDs for a participant (Query on GSI)."""
         try:
             response = self.participants_table.query(
                 IndexName=PARTICIPANT_INDEX,
-                KeyConditionExpression=Key('participantId').eq(participant_id)
+                KeyConditionExpression=Key('participantId').eq(str(participant_id))  # Convert int to str for DynamoDB query
             )
 
             return [item['chatId'] for item in response.get('Items', [])]
@@ -205,11 +205,11 @@ class DynamoDBRepository:
                 detail=f"Failed to get chats: {str(e)}"
             )
 
-    def is_participant(self, chat_id: str, participant_id: str) -> bool:
+    def is_participant(self, chat_id: str, participant_id: int) -> bool:
         """Check if user is a participant in chat."""
         try:
             response = self.participants_table.get_item(
-                Key={'chatId': chat_id, 'participantId': participant_id}
+                Key={'chatId': chat_id, 'participantId': str(participant_id)}  # Convert int to str for DynamoDB key
             )
             return 'Item' in response
         except ClientError:
@@ -219,11 +219,11 @@ class DynamoDBRepository:
     # Messages Operations
     # =========================================================================
     def save_message(
-        self, 
-        chat_id: str, 
-        sender_id: str, 
-        content: str, 
-        recipient_ids: Optional[List[str]] = None,
+        self,
+        chat_id: str,
+        sender_id: int,
+        content: str,
+        recipient_ids: Optional[List[int]] = None,
         # Sender display info (optional)
         sender_username: Optional[str] = None,
         sender_name: Optional[str] = None,
@@ -265,7 +265,7 @@ class DynamoDBRepository:
                 'chatId': chat_id,
                 'createdAt': timestamp_ms,
                 'messageId': message_id,
-                'senderId': sender_id,
+                'senderId': str(sender_id),  # Convert int to str for DynamoDB
                 'content': content,
             }
             
@@ -293,7 +293,7 @@ class DynamoDBRepository:
                 with self.inbox_table.batch_writer() as batch:
                     for recipient_id in recipient_ids:
                         inbox_item = {
-                            'recipientId': recipient_id,
+                            'recipientId': str(recipient_id),  # Convert int to str for DynamoDB
                             'createdAt': timestamp_ms,
                             'chatId': chat_id,
                             'messageId': message_id,
@@ -361,16 +361,16 @@ class DynamoDBRepository:
             logger.error(f"Failed to update message {message_id} upload status: {e}")
             return False
     
-    def fanout_message_to_inbox(self, message_id: str, chat_id: str, created_at: int, recipient_ids: List[str]) -> bool:
+    def fanout_message_to_inbox(self, message_id: str, chat_id: str, created_at: int, recipient_ids: List[int]) -> bool:
         """
         Fanout a message to recipients' inboxes (used after upload completes).
-        
+
         Args:
             message_id: The message ID
             chat_id: The chat ID
             created_at: The message creation timestamp
             recipient_ids: List of recipient user IDs
-        
+
         Returns:
             bool: True if fanout succeeded
         """
@@ -378,13 +378,13 @@ class DynamoDBRepository:
             with self.inbox_table.batch_writer() as batch:
                 for recipient_id in recipient_ids:
                     inbox_item = {
-                        'recipientId': recipient_id,
+                        'recipientId': str(recipient_id),  # Convert int to str for DynamoDB
                         'createdAt': created_at,
                         'chatId': chat_id,
                         'messageId': message_id,
                     }
                     batch.put_item(Item=inbox_item)
-            
+
             logger.info(f"Message {message_id} fanned out to {len(recipient_ids)} inboxes")
             return True
         except ClientError as e:
@@ -395,10 +395,10 @@ class DynamoDBRepository:
     # Inbox Operations
     # =========================================================================
 
-    def delete_inbox_message(self, recipient_id: str, message_id: str) -> bool:
+    def delete_inbox_message(self, recipient_id: int, message_id: str) -> bool:
         logger.info(f'Attempting to delete inbox message for recipient: {recipient_id} for message_id {message_id}')
         response = self.inbox_table.get_item(Key={
-            'recipientId': recipient_id,
+            'recipientId': str(recipient_id),  # Convert int to str for DynamoDB key
             'messageId': message_id
         })
 
@@ -407,32 +407,32 @@ class DynamoDBRepository:
             return False
 
         self.inbox_table.delete_item(Key={
-            'recipientId': recipient_id,
+            'recipientId': str(recipient_id),  # Convert int to str for DynamoDB key
             'messageId': message_id
         })
         logger.info('Succesfully deleted message from inbox')
         return True
     
     def get_inbox_messages(
-        self, 
-        recipient_id: str, 
-        limit: int = 50, 
+        self,
+        recipient_id: int,
+        limit: int = 50,
         last_evaluated_key: Optional[dict] = None
     ) -> InboxList:
         """
         Get messages from a user's inbox (across all chats), sorted by time.
-        
+
         Args:
             recipient_id: The user's ID
             limit: Maximum number of messages to return
             last_evaluated_key: For pagination
-        
+
         Returns:
             InboxList with converted InboxItem models
         """
         try:
             query_params = {
-                'KeyConditionExpression': Key('recipientId').eq(recipient_id),
+                'KeyConditionExpression': Key('recipientId').eq(str(recipient_id)),  # Convert int to str for DynamoDB query
                 'ScanIndexForward': False,  # Newest first
                 'Limit': limit
             }
@@ -467,7 +467,7 @@ class DynamoDBRepository:
                 message_data = {
                     'message_id': msg_item.get('messageId', ''),
                     'chat_id': msg_item.get('chatId', ''),
-                    'sender_id': msg_item.get('senderId', ''),
+                    'sender_id': int(msg_item.get('senderId', '0')),  # Convert str to int from DynamoDB
                     'content': msg_item.get('content', ''),
                     'created_at': message_created_at_dt
                 }

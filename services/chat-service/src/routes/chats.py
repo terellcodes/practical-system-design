@@ -36,7 +36,7 @@ async def create_chat(
 
 @router.get("/inbox/sync")
 async def sync_chat(
-    user_id: str,
+    user_id: int,
     service: ChatService = Depends(get_chat_service)
 ):
     """Fetch undelivered messsage from inbox"""
@@ -64,7 +64,7 @@ async def delete_chat(
 
 @router.get("/participant/{participant_id}", response_model=List[Chat])
 async def get_chats_for_participant(
-    participant_id: str,
+    participant_id: int,
     service: ChatService = Depends(get_chat_service)
 ):
     """Get all chats for a participant (uses GSI)."""
@@ -75,12 +75,12 @@ async def get_chats_for_participant(
 async def add_participants(
     chat_id: str,
     request: AddParticipantsRequest,
-    x_user_id: str = Header(..., description="Username of the user adding participants"),
+    x_user_id: int = Header(..., description="ID of the user adding participants"),
     service: ChatService = Depends(get_chat_service)
 ):
     """
     Add participants to a chat.
-    
+
     Requires X-User-Id header to verify contact relationships.
     Only contacts can be added to chats.
     """
@@ -90,7 +90,7 @@ async def add_participants(
 @router.delete("/{chat_id}/participants/{participant_id}", response_model=MessageResponse)
 async def remove_participant(
     chat_id: str,
-    participant_id: str,
+    participant_id: int,
     service: ChatService = Depends(get_chat_service)
 ):
     """Remove a participant from a chat."""

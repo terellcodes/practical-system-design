@@ -24,7 +24,7 @@ export default function Home() {
     e.preventDefault();
     if (inputUserId.trim()) {
       const userData: User = await userApi.loginOrCreateUser(inputUserId.trim());
-      setUser(userData.id.toString(), userData.username, userData.name);
+      setUser(userData.id, userData.username, userData.name);  // Pass number directly
       router.push("/chat");
     }
   };

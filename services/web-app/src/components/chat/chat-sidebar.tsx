@@ -18,7 +18,7 @@ export function ChatSidebar({ onCreateChat }: ChatSidebarProps) {
   const { userId, chats, setUser, setSelectedChatId } = useChatStore();
 
   const handleLogout = () => {
-    setUser("", "", "");
+    setUser(null, null, null);  // Clear user data
     setSelectedChatId(null);
     router.push("/");
   };

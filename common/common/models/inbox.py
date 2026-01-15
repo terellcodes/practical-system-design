@@ -21,7 +21,7 @@ class InboxList(BaseModel):
     """Response model for a list of inbox items"""
     items: List[Message] = Field(default_factory=list, description="List of inbox items")
     count: int = Field(..., description="Number of inbox items returned")
-    recipient_id: str = Field(..., description="Recipient user ID for these inbox items")
+    recipient_id: int = Field(..., description="Recipient user ID for these inbox items")
     last_evaluated_key: Optional[Dict[str, Any]] = Field(
         default=None, 
         description="Pagination token for fetching next page"
@@ -30,17 +30,17 @@ class InboxList(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "recipient_id": "user-123",
+                "recipient_id": 123,
                 "count": 2,
                 "items": [
                     {
-                        "recipient_id": "user-123",
+                        "recipient_id": 123,
                         "message_id": "msg-abc123",
                         "chat_id": "chat-xyz789",
                         "created_at": "2024-01-15T10:30:00"
                     },
                     {
-                        "recipient_id": "user-123",
+                        "recipient_id": 123,
                         "message_id": "msg-def456",
                         "chat_id": "chat-xyz789",
                         "created_at": "2024-01-15T10:31:00"

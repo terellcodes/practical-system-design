@@ -26,7 +26,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 // Chat API
 export const chatApi = {
   // Get all chats for a participant
-  getChatsForParticipant: async (participantId: string) => {
+  getChatsForParticipant: async (participantId: number) => {
     const response = await fetch(
       `${API_BASE}/chats/participant/${participantId}`
     );
@@ -74,40 +74,43 @@ export const chatApi = {
   },
 
   // Add participants to a chat
-  addParticipants: async (chatId: string, participantIds: string[]) => {
+  addParticipants: async (chatId: string, participantIds: number[], userId: number) => {
     const response = await fetch(`${API_BASE}/chats/${chatId}/participants`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": userId.toString(),  // Convert to string for HTTP header
+      },
       body: JSON.stringify({ participant_ids: participantIds }),
     });
     return handleResponse<
       Array<{
         chat_id: string;
-        participant_id: string;
+        participant_id: number;
         joined_at: string;
       }>
     >(response);
   },
 
   // Sync all undelivered messages (inbox) for a user across chats
-  syncInbox: async (userId: string) => {
+  syncInbox: async (userId: number) => {
     const response = await fetch(`${API_BASE}/chats/inbox/sync?user_id=${userId}`);
     return handleResponse<{
       items: Array<{
         message_id: string;
         chat_id: string;
-        sender_id: string;
+        sender_id: number;
         content: string;
         created_at: string;
       }>;
       count: number;
-      recipient_id: string;
+      recipient_id: number;
     }>(response);
   },
 
   // Request a presigned upload URL for an attachment
   requestUpload: async (chatId: string, params: {
-    sender_id: string;
+    sender_id: number;
     filename: string;
     content_type: string;
     content?: string;
@@ -255,7 +258,7 @@ export const userApi = {
 };
 
 // WebSocket URL helper - User-centric (single connection per user)
-export function getWebSocketUrl(userId: string): string {
+export function getWebSocketUrl(userId: number): string {
   const wsBase =
     process.env.NEXT_PUBLIC_WS_URL || "ws://localhost/api/chats";
   return `${wsBase}/ws?user_id=${userId}`;
