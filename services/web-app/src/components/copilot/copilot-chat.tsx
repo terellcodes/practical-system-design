@@ -30,7 +30,6 @@ export function CopilotChat() {
   const messages = useCopilotStore((state) => state.messages)
   const isLoading = useCopilotStore((state) => state.isLoading)
   const sendMessage = useCopilotStore((state) => state.sendMessage)
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -63,7 +62,7 @@ export function CopilotChat() {
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <ScrollArea className="flex-1 px-4 py-4" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 px-4 py-4">
         <div className="space-y-1">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-8">
