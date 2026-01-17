@@ -13,12 +13,22 @@ export function CopilotPanel() {
   const copilotOpen = useUIStore((state) => state.copilotOpen)
   const setCopilotOpen = useUIStore((state) => state.setCopilotOpen)
   const userId = useChatStore((state) => state.userId)
+  const username = useChatStore((state) => state.username)
+  const name = useChatStore((state) => state.name)
   const setCurrentUser = useCopilotStore((state) => state.setCurrentUser)
 
   // Sync userId to copilot store - loads that user's message history
   useEffect(() => {
-    setCurrentUser(userId)
-  }, [userId, setCurrentUser])
+    if (userId !== null) {
+      setCurrentUser(userId.toString(), {
+        id: userId,
+        username: username || '',
+        name: name || '',
+      })
+    } else {
+      setCurrentUser(null)
+    }
+  }, [userId, username, name, setCurrentUser])
 
   // Body scroll lock when panel is open
   useEffect(() => {

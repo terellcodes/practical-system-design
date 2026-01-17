@@ -278,6 +278,54 @@ export const userApi = {
   },
 };
 
+// Copilot API
+export const copilotApi = {
+  // Send a message to the copilot and get a response
+  chat: async (
+    userId: number,
+    message: string,
+    username?: string,
+    userName?: string,
+    conversationVersion?: number
+  ) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-User-Id": userId.toString(),
+    };
+    if (username) headers["X-Username"] = username;
+    if (userName) headers["X-User-Name"] = userName;
+    if (conversationVersion !== undefined) {
+      headers["X-Conversation-Version"] = conversationVersion.toString();
+    }
+
+    const response = await fetch(`${API_BASE}/copilot/chat`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message }),
+    });
+    return handleResponse<{ response: string }>(response);
+  },
+
+  // Get conversation history
+  getHistory: async (userId: number) => {
+    const response = await fetch(`${API_BASE}/copilot/history`, {
+      headers: { "X-User-Id": userId.toString() },
+    });
+    return handleResponse<{
+      messages: Array<{ role: "user" | "assistant"; content: string }>;
+    }>(response);
+  },
+
+  // Clear conversation history
+  clearHistory: async (userId: number) => {
+    const response = await fetch(`${API_BASE}/copilot/history`, {
+      method: "DELETE",
+      headers: { "X-User-Id": userId.toString() },
+    });
+    return handleResponse<{ success: boolean; message: string }>(response);
+  },
+};
+
 // WebSocket URL helper - User-centric (single connection per user)
 export function getWebSocketUrl(userId: number): string {
   const wsBase =

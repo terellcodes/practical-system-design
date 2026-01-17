@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { copilotApi } from '@/lib/api'
 
 export interface Message {
   id: string
@@ -7,20 +8,52 @@ export interface Message {
   timestamp: number
 }
 
-interface CopilotState {
-  currentUserId: string | null
-  messages: Message[]
-  isLoading: boolean
-  setCurrentUser: (userId: string | null) => void
-  sendMessage: (content: string) => Promise<void>
-  clearHistory: () => void
+interface UserInfo {
+  id: number
+  username: string
+  name: string
 }
 
-// Helper to get storage key for a user
-const getStorageKey = (userId: string) => `copilot-messages-${userId}`
+interface CopilotState {
+  currentUserId: string | null
+  currentUserInfo: UserInfo | null
+  conversationVersion: number
+  messages: Message[]
+  isLoading: boolean
+  error: string | null
+  setCurrentUser: (userId: string | null, userInfo?: UserInfo) => void
+  sendMessage: (content: string) => Promise<void>
+  loadHistory: () => Promise<void>
+  clearHistory: () => Promise<void>
+}
 
-// Helper to load messages from localStorage
-const loadMessages = (userId: string): Message[] => {
+// Helper to get storage key for a user (for localStorage fallback)
+const getStorageKey = (userId: string) => `copilot-messages-${userId}`
+const getVersionKey = (userId: string) => `copilot-version-${userId}`
+
+// Helper to load conversation version from localStorage
+const loadConversationVersion = (userId: string): number => {
+  if (typeof window === 'undefined') return 0
+  try {
+    const stored = localStorage.getItem(getVersionKey(userId))
+    return stored ? parseInt(stored, 10) : 0
+  } catch {
+    return 0
+  }
+}
+
+// Helper to save conversation version to localStorage
+const saveConversationVersion = (userId: string, version: number) => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(getVersionKey(userId), version.toString())
+  } catch {
+    // Handle storage quota errors silently
+  }
+}
+
+// Helper to load messages from localStorage (fallback for history)
+const loadMessagesFromStorage = (userId: string): Message[] => {
   if (typeof window === 'undefined') return []
   try {
     const stored = localStorage.getItem(getStorageKey(userId))
@@ -30,8 +63,8 @@ const loadMessages = (userId: string): Message[] => {
   }
 }
 
-// Helper to save messages to localStorage
-const saveMessages = (userId: string, messages: Message[]) => {
+// Helper to save messages to localStorage (for local persistence)
+const saveMessagesToStorage = (userId: string, messages: Message[]) => {
   if (typeof window === 'undefined') return
   try {
     localStorage.setItem(getStorageKey(userId), JSON.stringify(messages))
@@ -42,73 +75,166 @@ const saveMessages = (userId: string, messages: Message[]) => {
 
 export const useCopilotStore = create<CopilotState>()((set, get) => ({
   currentUserId: null,
+  currentUserInfo: null,
+  conversationVersion: 0,
   messages: [],
   isLoading: false,
+  error: null,
 
-  setCurrentUser: (userId: string | null) => {
+  setCurrentUser: (userId: string | null, userInfo?: UserInfo) => {
     const { currentUserId, messages } = get()
 
     // Don't do anything if same user
-    if (currentUserId === userId) return
+    if (currentUserId === userId) {
+      // But update userInfo if provided
+      if (userInfo) {
+        set({ currentUserInfo: userInfo })
+      }
+      return
+    }
 
     // Save current user's messages before switching
     if (currentUserId) {
-      saveMessages(currentUserId, messages)
+      saveMessagesToStorage(currentUserId, messages)
     }
 
-    // Load new user's messages (or empty if logging out)
-    const newMessages = userId ? loadMessages(userId) : []
+    // Load new user's messages and version from localStorage
+    const newMessages = userId ? loadMessagesFromStorage(userId) : []
+    const newVersion = userId ? loadConversationVersion(userId) : 0
 
-    set({ currentUserId: userId, messages: newMessages, isLoading: false })
+    set({
+      currentUserId: userId,
+      currentUserInfo: userInfo || null,
+      conversationVersion: newVersion,
+      messages: newMessages,
+      isLoading: false,
+      error: null,
+    })
+
+    // Load history from backend if user is set
+    if (userId && userInfo) {
+      get().loadHistory()
+    }
+  },
+
+  loadHistory: async () => {
+    const { currentUserInfo } = get()
+    if (!currentUserInfo) return
+
+    try {
+      const response = await copilotApi.getHistory(currentUserInfo.id)
+
+      // Convert backend messages to our format
+      const messages: Message[] = response.messages.map((msg, index) => ({
+        id: `history-${index}-${Date.now()}`,
+        role: msg.role,
+        content: msg.content,
+        timestamp: Date.now() - (response.messages.length - index) * 1000,
+      }))
+
+      set({ messages })
+
+      // Save to localStorage as backup
+      if (get().currentUserId) {
+        saveMessagesToStorage(get().currentUserId!, messages)
+      }
+    } catch (err) {
+      console.error('Failed to load copilot history:', err)
+      // Fall back to localStorage messages (already loaded)
+    }
   },
 
   sendMessage: async (content: string) => {
-    const { currentUserId } = get()
-    if (!currentUserId) return
+    const { currentUserId, currentUserInfo, conversationVersion } = get()
+    if (!currentUserId || !currentUserInfo) return
 
     // Add user message
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     }
 
     set((state) => ({
       messages: [...state.messages, userMessage],
-      isLoading: true
+      isLoading: true,
+      error: null,
     }))
 
     // Save after adding user message
-    saveMessages(currentUserId, get().messages)
+    saveMessagesToStorage(currentUserId, get().messages)
 
-    // Simulate AI response with 1 second delay
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      // Call the copilot API with conversation version
+      const response = await copilotApi.chat(
+        currentUserInfo.id,
+        content,
+        currentUserInfo.username,
+        currentUserInfo.name,
+        conversationVersion
+      )
 
-    // Add AI response
-    const aiMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `I received your message: "${content}". This is a mock response. The actual AI integration will be added in the future.`,
-      timestamp: Date.now()
+      // Add AI response
+      const aiMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: response.response,
+        timestamp: Date.now(),
+      }
+
+      set((state) => ({
+        messages: [...state.messages, aiMessage],
+        isLoading: false,
+      }))
+
+      // Save after adding AI response
+      saveMessagesToStorage(currentUserId, get().messages)
+    } catch (err) {
+      console.error('Failed to send copilot message:', err)
+
+      // Add error message as AI response
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content:
+          'Sorry, I encountered an error processing your request. Please try again.',
+        timestamp: Date.now(),
+      }
+
+      set((state) => ({
+        messages: [...state.messages, errorMessage],
+        isLoading: false,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      }))
+
+      saveMessagesToStorage(currentUserId, get().messages)
     }
-
-    set((state) => ({
-      messages: [...state.messages, aiMessage],
-      isLoading: false
-    }))
-
-    // Save after adding AI response
-    saveMessages(currentUserId, get().messages)
   },
 
-  clearHistory: () => {
-    const { currentUserId } = get()
-    set({ messages: [], isLoading: false })
+  clearHistory: async () => {
+    const { currentUserId, currentUserInfo, conversationVersion } = get()
 
-    // Clear from localStorage too
+    // Increment version to start fresh conversation
+    const newVersion = conversationVersion + 1
+
+    // Clear local state and increment version
+    set({ messages: [], isLoading: false, error: null, conversationVersion: newVersion })
+
+    // Clear messages and save new version to localStorage
     if (currentUserId) {
-      saveMessages(currentUserId, [])
+      saveMessagesToStorage(currentUserId, [])
+      saveConversationVersion(currentUserId, newVersion)
     }
-  }
+
+    // Call backend to clear history (optional, mainly for logging)
+    if (currentUserInfo) {
+      try {
+        await copilotApi.clearHistory(currentUserInfo.id)
+      } catch (err) {
+        console.error('Failed to clear copilot history on backend:', err)
+        // Local clear already happened, so this is non-critical
+      }
+    }
+  },
 }))
