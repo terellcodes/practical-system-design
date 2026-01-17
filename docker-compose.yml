@@ -35,6 +35,8 @@ services:
         condition: service_healthy
       chat-service:
         condition: service_healthy
+      copilot-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
       interval: 10s
@@ -109,6 +111,40 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  copilot-service:
+    build:
+      context: .
+      dockerfile: services/copilot-service/Dockerfile
+    container_name: copilot-service
+    restart: unless-stopped
+    environment:
+      # Anthropic API key for Claude LLM
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=claude-sonnet-4-20250514
+      # PostgreSQL for LangGraph checkpoint persistence
+      - DATABASE_URL=postgresql://dapruser:daprpassword@postgres:5432/daprdb
+      # Service URLs for internal communication
+      - USER_SERVICE_URL=http://user-service:8001
+      - CHAT_SERVICE_URL=http://chat-service:8002
+      - CHAT_SERVICE_WS_URL=ws://chat-service:8002
+      # Redis for publishing chat messages
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # ===========================================================================
   # Infrastructure - Databases (Shared Resources)
