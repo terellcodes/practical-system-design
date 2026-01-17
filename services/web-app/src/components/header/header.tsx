@@ -1,14 +1,20 @@
 'use client'
 
+import { Sparkles } from 'lucide-react'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { AddContactDialog } from '@/components/contacts/add-contact-dialog'
 import { PendingInvites } from '@/components/contacts/pending-invites'
 import { NotificationCenter } from '@/components/notifications/notification-center'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export function Header() {
   const userId = useChatStore((state) => state.userId)
   const { user } = useCurrentUser()
+  const copilotOpen = useUIStore((state) => state.copilotOpen)
+  const toggleCopilot = useUIStore((state) => state.toggleCopilot)
 
   return (
     <>
@@ -22,10 +28,21 @@ export function Header() {
             <div className="flex items-center gap-3">
               {/* Pending invites bell */}
               <PendingInvites userId={user.id} />
-              
+
               {/* Add contact button */}
               <AddContactDialog userId={user.id} />
-              
+
+              {/* AI Copilot button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleCopilot}
+                className={cn("gap-2", copilotOpen && "bg-accent")}
+              >
+                <Sparkles className="h-4 w-4" />
+                AI Copilot
+              </Button>
+
               {/* User info */}
               <div className="text-[#8696a0] text-sm font-medium">
                 {user.name || userId}
