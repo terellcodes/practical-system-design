@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "copilot-service"
+version = "1.0.0"
+description = "AI-powered copilot service using LangGraph"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "httpx>=0.26.0",
+    "redis>=5.0.0",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-core>=0.3.0",
+    "psycopg[binary]>=3.1.0",
+    "psycopg-pool>=3.2.0",
+    "pydantic>=2.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
