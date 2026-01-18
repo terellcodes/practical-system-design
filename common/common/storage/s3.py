@@ -106,35 +106,43 @@ def generate_presigned_upload_url(
     object_key: str,
     content_type: str,
     expiration: int = 3600,  # 1 hour default
+    metadata: Optional[dict] = None,
 ) -> Optional[str]:
     """
     Generate a pre-signed URL for uploading a file to S3.
-    
+
     The client can use this URL to PUT a file directly to S3.
-    
+
     Args:
         s3_client: boto3 S3 client
         bucket: S3 bucket name
         object_key: The key (path) where the file will be stored
         content_type: MIME type of the file (e.g., "image/jpeg")
         expiration: URL expiration time in seconds (default: 1 hour)
-    
+        metadata: Optional dict of user metadata to attach to the object
+
     Returns:
         Pre-signed URL string, or None if generation failed
-    
+
     Example usage by client:
         PUT {presigned_url}
         Content-Type: image/jpeg
         Body: <file bytes>
     """
     try:
+        params = {
+            'Bucket': bucket,
+            'Key': object_key,
+            'ContentType': content_type,
+        }
+
+        # Add user metadata if provided
+        if metadata:
+            params['Metadata'] = metadata
+
         url = s3_client.generate_presigned_url(
             'put_object',
-            Params={
-                'Bucket': bucket,
-                'Key': object_key,
-                'ContentType': content_type,
-            },
+            Params=params,
             ExpiresIn=expiration,
         )
         logger.info(f"Generated presigned upload URL for {bucket}/{object_key}")

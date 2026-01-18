@@ -44,6 +44,25 @@ services:
       retries: 3
 
   # ===========================================================================
+  # Observability
+  # ===========================================================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    container_name: jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"  # Web UI
+      - "14268:14268"  # Collector endpoint
+      - "6831:6831/udp"  # Agent (optional)
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================================================
   # Application Services
   # ===========================================================================
   user-service:
@@ -60,10 +79,16 @@ services:
       # Redis connection (available: redis:6379)
       - REDIS_URL=redis://redis:6379/0
       - CACHE_TTL_SECONDS=3600
+      # OpenTelemetry/Jaeger tracing
+      - OTEL_EXPORTER_JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - OTEL_SERVICE_NAME=user-service
+      - OTEL_TRACES_SAMPLER=always_on
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -98,12 +123,18 @@ services:
       - KAFKA_UPLOAD_FAILED_TOPIC=upload-failed
       # Redis for WebSocket pub/sub (cross-instance messaging)
       - REDIS_URL=redis://redis:6379/0
+      # OpenTelemetry/Jaeger tracing
+      - OTEL_EXPORTER_JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - OTEL_SERVICE_NAME=chat-service
+      - OTEL_TRACES_SAMPLER=always_on
     depends_on:
       localstack:
         condition: service_healthy
       redis:
         condition: service_healthy
       kafka:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
@@ -130,6 +161,10 @@ services:
       - CHAT_SERVICE_WS_URL=ws://chat-service:8002
       # Redis for publishing chat messages
       - REDIS_URL=redis://redis:6379/0
+      # OpenTelemetry/Jaeger tracing
+      - OTEL_EXPORTER_JAEGER_ENDPOINT=http://jaeger:14268/api/traces
+      - OTEL_SERVICE_NAME=copilot-service
+      - OTEL_TRACES_SAMPLER=always_on
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,6 +173,8 @@ services:
       user-service:
         condition: service_healthy
       chat-service:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]

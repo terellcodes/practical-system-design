@@ -7,6 +7,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy common package first (for layer caching)
+COPY common/ /app/common/
+
+# Install common package
+RUN pip install --no-cache-dir /app/common/
+
 # Copy pyproject.toml and install dependencies
 COPY services/copilot-service/pyproject.toml .
 RUN pip install --no-cache-dir .

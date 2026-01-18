@@ -17,6 +17,14 @@ import logging
 import os
 from urllib.parse import unquote_plus
 
+import boto3
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.kafka import KafkaInstrumentor
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -24,6 +32,46 @@ logger.setLevel(logging.INFO)
 # Kafka configuration from environment variables
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'kafka:29092')
 KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'upload-completed')
+
+
+def init_tracing():
+    """Initialize OpenTelemetry tracing for Lambda."""
+    resource = Resource.create({
+        "service.name": "upload-processor-lambda",
+        "service.version": "1.0.0",
+    })
+
+    provider = TracerProvider(resource=resource)
+    jaeger_endpoint = os.environ.get(
+        "OTEL_EXPORTER_JAEGER_ENDPOINT",
+        "http://jaeger:14268/api/traces"
+    )
+
+    jaeger_exporter = JaegerExporter(collector_endpoint=jaeger_endpoint)
+    provider.add_span_processor(BatchSpanProcessor(jaeger_exporter))
+    trace.set_tracer_provider(provider)
+
+    KafkaInstrumentor().instrument()
+    logger.info(f"Lambda tracing initialized -> {jaeger_endpoint}")
+
+
+# Initialize on cold start
+init_tracing()
+tracer = trace.get_tracer(__name__)
+
+# S3 client for fetching object metadata
+s3_client = boto3.client('s3', endpoint_url=os.environ.get('AWS_ENDPOINT_URL'))
+
+
+def get_correlation_id_from_metadata(bucket: str, key: str) -> str:
+    """Extract correlation ID from S3 object user metadata."""
+    try:
+        response = s3_client.head_object(Bucket=bucket, Key=key)
+        metadata = response.get('Metadata', {})
+        return metadata.get('correlation-id', 'unknown')
+    except Exception as e:
+        logger.warning(f"Could not get metadata for {bucket}/{key}: {e}")
+        return 'unknown'
 
 
 def parse_s3_key(key: str) -> dict:
@@ -93,76 +141,98 @@ def produce_to_kafka(message: dict) -> bool:
 
 def handler(event, context):
     """
-    Lambda handler for S3 upload events.
-    
+    Lambda handler for S3 upload events with distributed tracing.
+
     Args:
         event: S3 event notification
         context: Lambda context
-    
+
     Returns:
         dict with statusCode and body
     """
     logger.info(f"Received event: {json.dumps(event)}")
-    
-    processed = 0
-    errors = []
-    
-    for record in event.get('Records', []):
-        try:
-            # Extract S3 details
-            s3_info = record.get('s3', {})
-            bucket = s3_info.get('bucket', {}).get('name')
-            key = s3_info.get('object', {}).get('key')
-            size = s3_info.get('object', {}).get('size', 0)
-            event_name = record.get('eventName', '')
-            
-            logger.info(f"Processing: bucket={bucket}, key={key}, event={event_name}")
-            
-            if not bucket or not key:
-                logger.warning(f"Missing bucket or key in record: {record}")
-                continue
-            
-            # Parse the S3 key to extract message details
+
+    with tracer.start_as_current_span(
+        "lambda.upload_processor",
+        attributes={
+            "faas.trigger": "s3",
+            "faas.execution": context.aws_request_id if context else "local",
+        }
+    ) as root_span:
+
+        processed = 0
+        errors = []
+
+        for record in event.get('Records', []):
             try:
-                parsed = parse_s3_key(key)
-            except ValueError as e:
-                logger.warning(f"Skipping non-attachment object: {e}")
-                continue
-            
-            # Build Kafka message
-            kafka_message = {
-                'message_id': parsed['message_id'],
-                'chat_id': parsed['chat_id'],
-                's3_bucket': bucket,
-                's3_key': key,
-                'filename': parsed['filename'],
-                'size': size,
-                'event_type': 'upload_completed',
-            }
-            
-            # Produce to Kafka
-            if produce_to_kafka(kafka_message):
-                processed += 1
-                logger.info(f"Successfully processed upload for message {parsed['message_id']}")
-            else:
-                errors.append(f"Failed to produce to Kafka for {key}")
-                
-        except Exception as e:
-            error_msg = f"Error processing record: {e}"
-            logger.error(error_msg)
-            errors.append(error_msg)
-    
-    # Return response
-    response = {
-        'statusCode': 200 if not errors else 207,  # 207 Multi-Status if partial success
-        'body': json.dumps({
-            'processed': processed,
-            'errors': errors,
-        })
-    }
-    
-    logger.info(f"Handler complete: {response}")
-    return response
+                # Extract S3 details
+                s3_info = record.get('s3', {})
+                bucket = s3_info.get('bucket', {}).get('name')
+                key = s3_info.get('object', {}).get('key')
+                size = s3_info.get('object', {}).get('size', 0)
+                event_name = record.get('eventName', '')
+
+                logger.info(f"Processing: bucket={bucket}, key={key}, event={event_name}")
+
+                if not bucket or not key:
+                    logger.warning(f"Missing bucket or key in record: {record}")
+                    continue
+
+                # Parse the S3 key to extract message details
+                try:
+                    parsed = parse_s3_key(key)
+                except ValueError as e:
+                    logger.warning(f"Skipping non-attachment object: {e}")
+                    continue
+
+                # Get correlation ID from S3 metadata
+                correlation_id = get_correlation_id_from_metadata(bucket, key)
+
+                with tracer.start_as_current_span(
+                    "kafka.produce_upload_completion",
+                    attributes={
+                        "correlation.id": correlation_id,
+                        "message.id": parsed['message_id'],
+                        "chat.id": parsed['chat_id'],
+                        "s3.bucket": bucket,
+                        "s3.key": key,
+                    }
+                ):
+                    # Build Kafka message with correlation ID
+                    kafka_message = {
+                        'message_id': parsed['message_id'],
+                        'chat_id': parsed['chat_id'],
+                        's3_bucket': bucket,
+                        's3_key': key,
+                        'filename': parsed['filename'],
+                        'size': size,
+                        'event_type': 'upload_completed',
+                        'correlation_id': correlation_id,
+                    }
+
+                    # Produce to Kafka
+                    if produce_to_kafka(kafka_message):
+                        processed += 1
+                        logger.info(f"Successfully processed upload for message {parsed['message_id']}")
+                    else:
+                        errors.append(f"Failed to produce to Kafka for {key}")
+
+            except Exception as e:
+                error_msg = f"Error processing record: {e}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Return response
+        response = {
+            'statusCode': 200 if not errors else 207,  # 207 Multi-Status if partial success
+            'body': json.dumps({
+                'processed': processed,
+                'errors': errors,
+            })
+        }
+
+        logger.info(f"Handler complete: {response}")
+        return response
 
 
 # For local testing

@@ -12,12 +12,18 @@ Architecture:
 """
 
 import asyncio
+import json
 import logging
 from typing import Dict, Set, Optional, List
 from fastapi import WebSocket
 import redis.asyncio as aioredis
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from common.observability import get_tracer
 
 logger = logging.getLogger(__name__)
+
+# Propagator for trace context across Redis pub/sub
+propagator = TraceContextTextMapPropagator()
 
 
 class ConnectionManager:
@@ -208,25 +214,49 @@ class ConnectionManager:
         """
         Background task that listens for messages on all subscribed channels.
         Routes messages to the user's WebSocket connection.
+        Extracts trace context for distributed tracing continuity.
         """
         logger.info(f"Started listening for user {user_id}")
-        
+
         try:
             async for message in pubsub.listen():
-                logger.info(f"Recived message for {user_id}", message)
+                logger.info(f"Received message for {user_id}", message)
                 # Ignore subscription confirmation messages
                 if message["type"] != "message":
                     continue
-                
-                # Get the message data and send to user's WebSocket
-                message_data = message["data"]
-                
-                if user_id in self.user_connections:
-                    try:
-                        await self.user_connections[user_id].send_text(message_data)
-                    except Exception as e:
-                        logger.warning(f"Failed to send message to {user_id}: {e}")
-                        
+
+                # Get the message data
+                raw_data = message["data"]
+
+                try:
+                    # Try to parse as wrapped message with trace context
+                    wrapped_data = json.loads(raw_data)
+
+                    if "trace_context" in wrapped_data and "payload" in wrapped_data:
+                        # Extract trace context and create span
+                        ctx = propagator.extract(carrier=wrapped_data.get("trace_context", {}))
+                        tracer = get_tracer()
+
+                        with tracer.start_as_current_span(
+                            "redis.deliver_message",
+                            context=ctx,
+                            attributes={"user.id": user_id}
+                        ):
+                            actual_message = json.dumps(wrapped_data["payload"])
+                            if user_id in self.user_connections:
+                                await self.user_connections[user_id].send_text(actual_message)
+                    else:
+                        # No trace context, send as-is
+                        if user_id in self.user_connections:
+                            await self.user_connections[user_id].send_text(raw_data)
+
+                except json.JSONDecodeError:
+                    # Not JSON, send raw data
+                    if user_id in self.user_connections:
+                        await self.user_connections[user_id].send_text(raw_data)
+                except Exception as e:
+                    logger.warning(f"Failed to send message to {user_id}: {e}")
+
         except asyncio.CancelledError:
             logger.info(f"Listener task cancelled for user {user_id}")
         except Exception as e:
@@ -234,16 +264,26 @@ class ConnectionManager:
     
     async def publish_message(self, chat_id: str, message: str) -> None:
         """
-        Publish a message to a chat's Redis channel.
+        Publish a message to a chat's Redis channel with trace context.
         All users subscribed to this chat will receive it.
-        
+
         Args:
             chat_id: The chat room to broadcast to
             message: The message to send (should be JSON string)
         """
         channel = f"chat:{chat_id}"
         try:
-            await self.redis_client.publish(channel, message)
+            # Inject trace context into the message
+            carrier = {}
+            propagator.inject(carrier)
+
+            # Wrap message with trace context
+            wrapped_message = {
+                "payload": json.loads(message) if isinstance(message, str) else message,
+                "trace_context": carrier,
+            }
+
+            await self.redis_client.publish(channel, json.dumps(wrapped_message))
             logger.debug(f"Published message to Redis channel {channel}")
         except Exception as e:
             logger.error(f"Failed to publish to Redis: {e}")

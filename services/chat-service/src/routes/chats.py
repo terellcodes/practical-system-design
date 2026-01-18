@@ -4,7 +4,7 @@ Chat CRUD API endpoints
 
 from typing import List
 
-from fastapi import APIRouter, Depends, status, Header, HTTPException
+from fastapi import APIRouter, Depends, status, Header, HTTPException, Request
 
 from common.models import (
     Chat,
@@ -16,6 +16,7 @@ from common.models import (
     UploadRequest,
     UploadRequestResponse,
 )
+from common.observability import get_correlation_id
 from src.services.chat_service import ChatService
 
 router = APIRouter(prefix="/chats", tags=["Chats"])
@@ -103,21 +104,23 @@ async def remove_participant(
 @router.post("/{chat_id}/messages/upload-request", response_model=UploadRequestResponse, status_code=status.HTTP_201_CREATED)
 async def request_upload(
     chat_id: str,
-    request: UploadRequest,
+    upload_request: UploadRequest,
+    fastapi_request: Request,
     service: ChatService = Depends(get_chat_service)
 ):
     """
     Request a pre-signed URL for uploading a file attachment.
-    
+
     This endpoint:
     1. Creates a message in PENDING status
     2. Returns a pre-signed URL for direct upload to S3
-    
+
     The client should then:
     1. PUT the file to the upload_url with the correct Content-Type
     2. S3 will trigger an event when upload completes
     3. The message status will be updated to COMPLETED
     4. Recipients will then see the message with the attachment
     """
-    return service.request_upload(chat_id, request)
+    correlation_id = get_correlation_id(fastapi_request)
+    return service.request_upload(chat_id, upload_request, correlation_id)
 

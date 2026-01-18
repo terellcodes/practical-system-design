@@ -185,34 +185,40 @@ class ChatService:
     def get_messages_from_inbox(self, recipient_id: int) -> dict:
         return self.repository.get_inbox_messages(recipient_id)
     
-    def request_upload(self, chat_id: str, request: UploadRequest) -> UploadRequestResponse:
+    def request_upload(
+        self,
+        chat_id: str,
+        request: UploadRequest,
+        correlation_id: str = None
+    ) -> UploadRequestResponse:
         """
         Request a pre-signed URL for uploading a file attachment.
-        
+
         This creates a message in PENDING status and returns a pre-signed URL
         for the client to upload directly to S3. Once the upload completes,
         S3 triggers an event that updates the message status to COMPLETED.
-        
+
         Args:
             chat_id: The chat to attach the file to
             request: Upload request with filename, content_type, sender_id
-        
+            correlation_id: Optional correlation ID for distributed tracing
+
         Returns:
             UploadRequestResponse with message_id, upload_url, s3_key
         """
         # Verify chat exists
         self.get_chat(chat_id)
-        
+
         # Verify sender is a participant
         if not self.repository.is_participant(chat_id, request.sender_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"User {request.sender_id} is not a participant in chat {chat_id}"
             )
-        
+
         # Generate message ID first (we need it for the S3 key)
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
-        
+
         # Generate S3 object key
         s3_key = generate_s3_object_key(
             chat_id=chat_id,
@@ -220,14 +226,20 @@ class ChatService:
             filename=request.filename,
             content_type=request.content_type
         )
-        
-        # Generate pre-signed upload URL
+
+        # Prepare S3 metadata with correlation ID
+        s3_metadata = {}
+        if correlation_id:
+            s3_metadata['correlation-id'] = correlation_id
+
+        # Generate pre-signed upload URL with metadata
         upload_url = generate_presigned_upload_url(
             s3_client=self.s3_client,
             bucket=S3_CONFIG.bucket_name,
             object_key=s3_key,
             content_type=request.content_type,
-            expiration=3600  # 1 hour
+            expiration=3600,  # 1 hour
+            metadata=s3_metadata if s3_metadata else None
         )
         
         if not upload_url:

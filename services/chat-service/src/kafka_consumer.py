@@ -22,6 +22,7 @@ from src.config import (
 )
 from src.repositories.dynamodb import DynamoDBRepository
 from src import websocket as ws_module
+from common.observability import get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class UploadCompletionConsumer:
     async def _process_message(self, message: dict):
         """
         Process a single upload completion message.
-        
+
         Expected message format:
         {
             "message_id": "msg-xxx",
@@ -123,20 +124,48 @@ class UploadCompletionConsumer:
             "s3_key": "chats/.../file.jpg",
             "filename": "file.jpg",
             "size": 12345,
-            "event_type": "upload_completed"
+            "event_type": "upload_completed",
+            "correlation_id": "xxx-xxx-xxx"
         }
         """
         logger.info(f"Processing upload completion: {message}")
-        
+
         message_id = message.get('message_id')
         chat_id = message.get('chat_id')
         s3_bucket = message.get('s3_bucket')
         s3_key = message.get('s3_key')
-        
+        correlation_id = message.get('correlation_id', 'unknown')
+
         if not message_id or not chat_id:
             logger.warning(f"Invalid message, missing message_id or chat_id: {message}")
             return
-        
+
+        # Create a span for processing this Kafka message
+        tracer = get_tracer()
+        with tracer.start_as_current_span(
+            "kafka.process_upload_completion",
+            attributes={
+                "messaging.system": "kafka",
+                "messaging.destination": KAFKA_UPLOAD_COMPLETED_TOPIC,
+                "correlation.id": correlation_id,
+                "message.id": message_id,
+                "chat.id": chat_id,
+            }
+        ):
+            await self._do_process_message(
+                message_id, chat_id, s3_bucket, s3_key, correlation_id, message
+            )
+
+    async def _do_process_message(
+        self,
+        message_id: str,
+        chat_id: str,
+        s3_bucket: str,
+        s3_key: str,
+        correlation_id: str,
+        message: dict
+    ):
+        """Internal message processing with tracing context."""
         try:
             # 1. Get message details from DynamoDB to get created_at timestamp
             # We need to query by message_id to get the full record

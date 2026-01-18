@@ -26,7 +26,7 @@ cp /lambda/upload-processor/handler.py $WORK_DIR/
 
 # Install dependencies
 echo "📦 Installing Lambda dependencies..."
-pip install kafka-python -t $WORK_DIR --quiet
+pip install kafka-python boto3 opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-kafka-python opentelemetry-exporter-jaeger Deprecated -t $WORK_DIR --quiet
 
 # Create deployment package
 echo "📦 Creating deployment package..."
@@ -46,7 +46,7 @@ awslocal lambda create-function \
     --role arn:aws:iam::000000000000:role/lambda-role \
     --timeout 30 \
     --memory-size 256 \
-    --environment "Variables={KAFKA_BOOTSTRAP_SERVERS=kafka:29092,KAFKA_TOPIC=upload-completed}"
+    --environment "Variables={KAFKA_BOOTSTRAP_SERVERS=kafka:29092,KAFKA_TOPIC=upload-completed,OTEL_EXPORTER_JAEGER_ENDPOINT=http://jaeger:14268/api/traces,OTEL_SERVICE_NAME=upload-processor-lambda,AWS_ENDPOINT_URL=http://localstack:4566}"
 
 sleep 2
 

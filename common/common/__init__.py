@@ -35,6 +35,17 @@ from common.storage import (
     generate_s3_object_key,
 )
 
+from common.observability import (
+    setup_tracing,
+    instrument_fastapi,
+    get_tracer,
+    get_current_trace_id,
+    get_current_span_id,
+    CorrelationIdMiddleware,
+    get_correlation_id,
+    CORRELATION_ID_HEADER,
+)
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -60,5 +71,14 @@ __all__ = [
     "generate_presigned_upload_url",
     "generate_presigned_download_url",
     "generate_s3_object_key",
+    # Observability utilities
+    "setup_tracing",
+    "instrument_fastapi",
+    "get_tracer",
+    "get_current_trace_id",
+    "get_current_span_id",
+    "CorrelationIdMiddleware",
+    "get_correlation_id",
+    "CORRELATION_ID_HEADER",
 ]
 
