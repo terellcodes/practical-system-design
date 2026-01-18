@@ -14,6 +14,8 @@ from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION
 from src.routes import health_router, copilot_router
 from src.agent.graph import get_copilot_agent, close_copilot_agent
 from src.services.chat_service_client import get_chat_service_client, close_chat_service_client
+from src.services.user_service_client import close_user_service_client
+from common.observability import setup_tracing, instrument_fastapi, CorrelationIdMiddleware
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -25,6 +27,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
     logger.info("=" * 60)
+
+    # Initialize distributed tracing
+    setup_tracing(service_name=SERVICE_NAME, filter_asgi_spans=False)
 
     try:
         # Initialize the copilot agent (and PostgresSaver checkpointer)
@@ -45,6 +50,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     await close_copilot_agent()
     await close_chat_service_client()
+    await close_user_service_client()
     logger.info("Shutdown complete")
 
 
@@ -55,6 +61,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Instrument FastAPI for distributed tracing
+instrument_fastapi(app)
+
 # CORS middleware - allows browser requests from any origin
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +72,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Correlation ID middleware for request tracking
+app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(health_router)
 app.include_router(copilot_router, prefix="/api")

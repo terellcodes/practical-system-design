@@ -10,6 +10,7 @@ import httpx
 import redis.asyncio as aioredis
 
 from src.config import CHAT_SERVICE_URL, REDIS_URL
+from common.observability import CORRELATION_ID_HEADER
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class ChatServiceClient:
         self.base_url = base_url
         self.redis_url = redis_url
         self.timeout = httpx.Timeout(10.0)
+        self.http_client = httpx.AsyncClient(timeout=self.timeout)
         self.redis_client: Optional[aioredis.Redis] = None
 
     async def initialize(self):
@@ -37,7 +39,8 @@ class ChatServiceClient:
         logger.info("Redis client initialized for chat message publishing")
 
     async def close(self):
-        """Close Redis connection."""
+        """Close HTTP and Redis connections."""
+        await self.http_client.aclose()
         if self.redis_client:
             await self.redis_client.close()
             logger.info("Redis client closed")
@@ -46,7 +49,8 @@ class ChatServiceClient:
         self,
         name: str,
         creator_id: int,
-        participant_ids: Optional[List[int]] = None
+        participant_ids: Optional[List[int]] = None,
+        correlation_id: Optional[str] = None
     ) -> dict:
         """
         Create a new chat.
@@ -55,6 +59,7 @@ class ChatServiceClient:
             name: Name of the chat
             creator_id: ID of the user creating the chat
             participant_ids: Optional list of participant IDs to add
+            correlation_id: Optional correlation ID for tracing
 
         Returns:
             Created chat details
@@ -66,22 +71,27 @@ class ChatServiceClient:
                 if pid not in participants:
                     participants.append(pid)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/chats",
-                json={
-                    "name": name,
-                    "participant_ids": participants
-                }
-            )
-            response.raise_for_status()
-            return response.json()
+        headers = {}
+        if correlation_id:
+            headers[CORRELATION_ID_HEADER] = correlation_id
+
+        response = await self.http_client.post(
+            f"{self.base_url}/chats",
+            json={
+                "name": name,
+                "participant_ids": participants
+            },
+            headers=headers if headers else None
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def add_participants(
         self,
         chat_id: str,
         participant_ids: List[int],
-        user_id: int
+        user_id: int,
+        correlation_id: Optional[str] = None
     ) -> list:
         """
         Add participants to an existing chat.
@@ -90,55 +100,75 @@ class ChatServiceClient:
             chat_id: ID of the chat
             participant_ids: List of user IDs to add
             user_id: ID of the user making the request (for contact verification)
+            correlation_id: Optional correlation ID for tracing
 
         Returns:
             List of added participants
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                f"{self.base_url}/chats/{chat_id}/participants",
-                json={"participant_ids": participant_ids},
-                headers={"X-User-Id": str(user_id)}
-            )
-            response.raise_for_status()
-            return response.json()
+        headers = {"X-User-Id": str(user_id)}
+        if correlation_id:
+            headers[CORRELATION_ID_HEADER] = correlation_id
 
-    async def get_chat(self, chat_id: str) -> Optional[dict]:
+        response = await self.http_client.post(
+            f"{self.base_url}/chats/{chat_id}/participants",
+            json={"participant_ids": participant_ids},
+            headers=headers
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def get_chat(
+        self, chat_id: str, correlation_id: Optional[str] = None
+    ) -> Optional[dict]:
         """
         Get chat details with participants.
 
         Args:
             chat_id: ID of the chat
+            correlation_id: Optional correlation ID for tracing
 
         Returns:
             Chat details or None if not found
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            try:
-                response = await client.get(f"{self.base_url}/chats/{chat_id}")
-                response.raise_for_status()
-                return response.json()
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    return None
-                raise
+        headers = {}
+        if correlation_id:
+            headers[CORRELATION_ID_HEADER] = correlation_id
 
-    async def get_chats_for_user(self, user_id: int) -> list:
+        try:
+            response = await self.http_client.get(
+                f"{self.base_url}/chats/{chat_id}",
+                headers=headers if headers else None
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return None
+            raise
+
+    async def get_chats_for_user(
+        self, user_id: int, correlation_id: Optional[str] = None
+    ) -> list:
         """
         Get all chats for a user.
 
         Args:
             user_id: ID of the user
+            correlation_id: Optional correlation ID for tracing
 
         Returns:
             List of chats the user is a participant in
         """
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(
-                f"{self.base_url}/chats/participant/{user_id}"
-            )
-            response.raise_for_status()
-            return response.json()
+        headers = {}
+        if correlation_id:
+            headers[CORRELATION_ID_HEADER] = correlation_id
+
+        response = await self.http_client.get(
+            f"{self.base_url}/chats/participant/{user_id}",
+            headers=headers if headers else None
+        )
+        response.raise_for_status()
+        return response.json()
 
     async def send_message(
         self,

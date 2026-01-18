@@ -16,6 +16,69 @@ logger = logging.getLogger(__name__)
 USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8001")
 
 
+class UserServiceClient:
+    """Client for interacting with user-service endpoints."""
+
+    def __init__(self, base_url: str = USER_SERVICE_URL):
+        self.base_url = base_url
+        self.client = httpx.AsyncClient(timeout=5.0)
+
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+    async def check_contacts(self, user_id_1: int, user_id_2: int) -> bool:
+        """
+        Check if two users are contacts by calling user-service.
+
+        Args:
+            user_id_1: First user ID
+            user_id_2: Second user ID
+
+        Returns:
+            True if they are contacts, False otherwise
+        """
+        url = f"{self.base_url}/api/contacts/check"
+        params = {"user_id_1": user_id_1, "user_id_2": user_id_2}
+
+        try:
+            response = await self.client.get(url, params=params)
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("are_contacts", False)
+            else:
+                logger.warning(f"Contact check failed: {response.status_code} - {response.text}")
+                return False
+
+        except httpx.TimeoutException:
+            logger.error(f"Timeout calling user-service: {url}")
+            return False
+        except Exception as e:
+            logger.error(f"Error calling user-service: {e}")
+            return False
+
+
+# Global client instance
+_user_service_client: Optional[UserServiceClient] = None
+
+
+def get_user_service_client() -> UserServiceClient:
+    """Get or create the user service client."""
+    global _user_service_client
+    if _user_service_client is None:
+        _user_service_client = UserServiceClient()
+    return _user_service_client
+
+
+async def close_user_service_client():
+    """Close the user service client."""
+    global _user_service_client
+    if _user_service_client:
+        await _user_service_client.close()
+        _user_service_client = None
+
+
 async def check_contacts(user_id_1: int, user_id_2: int) -> bool:
     """
     Check if two users are contacts by calling user-service.
@@ -27,26 +90,8 @@ async def check_contacts(user_id_1: int, user_id_2: int) -> bool:
     Returns:
         True if they are contacts, False otherwise
     """
-    url = f"{USER_SERVICE_URL}/api/contacts/check"
-    params = {"user_id_1": user_id_1, "user_id_2": user_id_2}
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(url, params=params)
-
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("are_contacts", False)
-            else:
-                logger.warning(f"Contact check failed: {response.status_code} - {response.text}")
-                return False
-
-    except httpx.TimeoutException:
-        logger.error(f"Timeout calling user-service: {url}")
-        return False
-    except Exception as e:
-        logger.error(f"Error calling user-service: {e}")
-        return False
+    client = get_user_service_client()
+    return await client.check_contacts(user_id_1, user_id_2)
 
 
 async def check_contacts_batch(current_user_id: int, participant_ids: list[int]) -> dict[int, bool]:

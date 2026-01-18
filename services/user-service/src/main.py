@@ -14,6 +14,7 @@ from src.config import setup_logging, SERVICE_NAME, SERVICE_VERSION, REDIS_CONFI
 from src.database import init_postgres, init_redis, close_postgres, close_redis
 from src.routes import users_router, health_router, invites_router, contacts_router
 from src.services.redis_publisher import RedisPublisher, publisher
+from common.observability import setup_tracing, instrument_fastapi, CorrelationIdMiddleware
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -23,11 +24,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     import src.services.redis_publisher as redis_pub
-    
+
     logger.info("=" * 60)
     logger.info(f"{SERVICE_NAME} v{SERVICE_VERSION} starting up...")
     logger.info("=" * 60)
-    
+
+    # Initialize distributed tracing
+    setup_tracing(service_name=SERVICE_NAME, filter_asgi_spans=False)
+
     try:
         await init_postgres()
         await init_redis()
@@ -57,15 +61,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware - allows browser requests from any origin
+# Instrument FastAPI for distributed tracing
+instrument_fastapi(app)
 
+# CORS middleware - allows browser requests from any origin
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True, 
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Correlation ID middleware for request tracking
+app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(health_router)
 app.include_router(users_router, prefix="/api")
